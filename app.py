@@ -258,31 +258,40 @@ def create_agent(df: pd.DataFrame):
 
 st.set_page_config(layout="wide")
 
-st.title("🤖 Agente de Análise de Dados Autonometa")
+st.title("🤖 Agente de Análise de Dados com Gemini")
+
+# Inicialização do Histórico de Chat
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
-# Lógica de carregamento e inicialização do agente
+# Lógica de carregamento e inicialização do agente 
 if uploaded_file is not None and (st.session_state.df is None or st.session_state.NOME_DO_ARQUIVO_REFERENCIA != uploaded_file.name):
+    # Limpa o histórico ao carregar um novo arquivo
+    st.session_state.messages = [] 
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
-            # Tentar ler o arquivo
             df = pd.read_csv(uploaded_file)
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
             
-            # Inicializar agente apenas se o DF for válido
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
+            
+            # Adiciona mensagem de boas-vindas ao histórico
+            st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
+            
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {e}")
             st.session_state.df = None
 
 
-# Exibição do status e DataFrame
+# --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
-    st.sidebar.markdown(f"**Arquivo Ativo:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
+    st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
+    st.sidebar.markdown("**Amostragem de dados:**")
     st.sidebar.dataframe(st.session_state.df.head(5))
     
     col1, col2 = st.columns([1, 2])
@@ -291,7 +300,7 @@ if st.session_state.df is not None:
         st.metric(label="Linhas", value=st.session_state.df.shape[0])
         st.metric(label="Colunas", value=st.session_state.df.shape[1])
         
-        # Botões de download do relatório de perfil (se gerado)
+        # Botões de download do relatório de perfil (com limpeza)
         if 'profile_report_path' in st.session_state:
             with open(st.session_state.profile_report_path, "rb") as file:
                 st.download_button(
@@ -300,62 +309,65 @@ if st.session_state.df is not None:
                     file_name="relatorio_perfil.html",
                     mime="text/html"
                 )
-            # --- Aprimoramento 3: Limpeza de Cache ---
             try:
                 os.remove(st.session_state.profile_report_path)
             except OSError:
-                pass # Ignora se o arquivo já foi removido ou não existe
+                pass
             del st.session_state.profile_report_path
-        
-    # Campo de Pergunta
-    pergunta = st.text_input("Qual sua dúvida sobre os dados? (Ex: 'gere um histograma de Amount')", key="input_pergunta", disabled=(st.session_state.agent is None))
+
+
+# --- Exibição do Histórico de Chat ---
+# Remove os dados da barra lateral (col1, col2) e exibe o histórico no corpo principal
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# --- Campo de Entrada de Chat Fixo na Parte Inferior ---
+if st.session_state.agent:
+    pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
     
-    if pergunta and st.session_state.agent:
-        st.markdown("---")
-        st.info(f"**PERGUNTA:** {pergunta}")
+    if pergunta:
+        # 1. Adiciona a pergunta do usuário ao histórico e exibe
+        st.session_state.messages.append({"role": "user", "content": pergunta})
+        with st.chat_message("user"):
+            st.markdown(pergunta)
+
+        # 2. Executa o agente
+        with st.chat_message("assistant"):
+            with st.spinner("O Agente está pensando e analisando os dados..."):
+                output_buffer = io.StringIO()
+                sys.stdout = output_buffer
+                
+                try:
+                    resposta = st.session_state.agent.invoke({"input": pergunta})
+                    sys.stdout = sys.__stdout__
+                    
+                    output_text = resposta['output']
+                    
+                    # 3. Exibe a resposta final e a adiciona ao histórico
+                    st.markdown(output_text)
+                    
+                    # 4. Exibe o rastreio (verbose) em um expander
+                    with st.expander("Rastreio da Execução (Verbose)"):
+                        st.code(output_buffer.getvalue(), language='log')
+
+                except Exception as e:
+                    sys.stdout = sys.__stdout__
+                    output_text = f"❌ Erro na execução do Agente. Detalhe: {e}"
+                    st.error(output_text)
+
+                # Adiciona a resposta (ou erro) ao histórico da sessão
+                st.session_state.messages.append({"role": "assistant", "content": output_text})
         
-        with st.spinner('Pensando... O Agente está analisando e pode levar alguns segundos.'):
-            # Crie um placeholder para a saída verbose
-            output_buffer = io.StringIO()
-            sys.stdout = output_buffer
-            
-            try:
-                resposta = st.session_state.agent.invoke({"input": pergunta})
-                
-                # Restaura a saída padrão imediatamente
-                sys.stdout = sys.__stdout__
-                
-                # Exibe o rastreio do Agente (verbose output)
-                # Mantemos o rastreio da execução aqui
-                with st.expander("Rastreio da Execução (Verbose)"):
-                    st.code(output_buffer.getvalue(), language='log')
-                
-                # --- Aprimoramento 2: Tratamento da Saída Final ---
-                output_text = resposta['output']
-                
-                # Verifica se a resposta foi gerada por uma de nossas ferramentas
-                # E se for uma resposta simples de 'Sucesso/Erro', exibe-a no verbose.
-                if output_text.startswith("Sucesso:") or output_text.startswith("Erro:"):
-                    st.subheader("Resposta do Agente")
-                    st.info(output_text) # Exibe como info, não como sucesso
-                else:
-                    # Se for uma análise estatística ou texto livre do LLM,
-                    # exibe como sucesso.
-                    st.subheader("Resposta do Agente")
-                    st.success(output_text)
-                
-            except Exception as e:
-                # Restaura a saída padrão em caso de erro
-                sys.stdout = sys.__stdout__
-                st.error(f"Erro na execução do Agente. Detalhe: {e}")
-            
-        # Exibição de Gráfico Gerado
+        # 5. Exibição de Gráfico Gerado (O Streamlit redesenha o histórico acima)
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
-            del st.session_state.graph_buffer 
+            del st.session_state.graph_buffer
+        
+        # Opcional: Reruns para garantir que o chat scroll para baixo
+        # st.rerun() # Descomentar se o chat não rolar automaticamente
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
