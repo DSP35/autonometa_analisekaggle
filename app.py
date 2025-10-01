@@ -236,36 +236,42 @@ def create_agent(df: pd.DataFrame):
     Você é um agente de ANÁLISE DE DADOS. Sua principal função é analisar o DataFrame pandas carregado e gerar visualizações, estatísticas ou perfis.
     Siga as regras rigorosamente.
     """
+
+    # --- CORREÇÃO DE ESCOPO: DEFINIÇÃO DA LISTA DE FERRAMENTAS DENTRO DA FUNÇÃO ---
+    tools = [
+        otimizar_tipos_de_dados_para_memoria, 
+        gerar_perfil_de_dados_e_salvar_html, 
+        gerar_visualizacao 
+    ]
     
+    # --- CONFIGURAÇÃO DE MEMÓRIA ---
     memory = ConversationBufferMemory(
         memory_key="chat_history", 
         return_messages=True
     )
     
-    # 1. Cria o Agente base (retorna o objeto AgentType.OPENAI_TOOLS)
+    # 1. Cria o Agente base
     agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
         agent_type="openai-tools",
-        extra_tools=tools,
+        extra_tools=tools, # 'tools' agora está definido
         handle_parsing_errors=True,
         allow_dangerous_code=True,
         agent_kwargs={"prefix": CUSTOM_PREFIX}
     )
     
     # 2. Envolve o agente em um AgentExecutor com Memória
-    # Usaremos o AgentExecutor para gerenciar o estado da conversa.
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
         memory=memory,
-        verbose=True, # Mantemos o verbose
+        verbose=True,
         handle_parsing_errors=True,
     )
     
-    return executor 
-
+    return executor
 
 # --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
 
@@ -394,4 +400,5 @@ if st.session_state.agent:
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
