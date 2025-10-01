@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+matplotlib
+seaborn
+langchain
+langchain-experimental
+google-genai
+langchain-google-genai
+ydata-profiling
