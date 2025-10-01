@@ -280,11 +280,11 @@ st.set_page_config(layout="wide")
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
 # Inicialização do Histórico de Chat e Flags de Estado
-# st.session_state.messages deve ser inicializado como uma lista vazia
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "initialized_chat" not in st.session_state:
     st.session_state.initialized_chat = False
+
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
@@ -302,6 +302,7 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
             
+            # Garante que o Agente seja criado apenas com um DF válido
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
             
@@ -309,12 +310,14 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.error(f"Erro ao ler o arquivo CSV: {e}")
             st.session_state.df = None
 
+
 # --- Bloco de Controle de Mensagem Inicial ---
 if st.session_state.agent is not None and not st.session_state.initialized_chat:
     
     st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
     
     st.session_state.initialized_chat = True
+
 
 # --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
@@ -350,6 +353,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"]) 
 
+
 # --- Campo de Entrada de Chat Fixo na Parte Inferior ---
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
@@ -358,8 +362,7 @@ if st.session_state.agent:
         # 1. Adiciona a pergunta do usuário ao histórico (para o próximo refresh)
         st.session_state.messages.append({"role": "user", "content": pergunta})
 
-        # 2. **DESENHA A MENSAGEM DO USUÁRIO IMEDIATAMENTE**
-        #    Isso garante que a mensagem do usuário apareça ANTES do spinner do assistente.
+        # 2. DESENHA A MENSAGEM DO USUÁRIO IMEDIATAMENTE (Visual Fix)
         with st.chat_message("user"):
             st.markdown(pergunta)
         
@@ -379,6 +382,7 @@ if st.session_state.agent:
                     # Exibe a resposta final
                     st.markdown(assistant_message_content) 
                     
+                    # 4. RESTAURADO: Rastreio da Execução (Verbose)
                     with st.expander("Rastreio da Execução (Verbose)"):
                         st.code(output_buffer.getvalue(), language='log')
 
@@ -387,20 +391,23 @@ if st.session_state.agent:
                     assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
                     st.error(assistant_message_content)
 
-                # 4. Adiciona a resposta final (ou erro) ao histórico da sessão
+                # 5. Adiciona a resposta final (ou erro) ao histórico da sessão
                 st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
         
-        # 5. Exibição de Gráfico Gerado
+        # 6. Exibição de Gráfico Gerado
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
             del st.session_state.graph_buffer
         
-        # 6. **FORÇA O REDRAW COMPLETO**
-        #    Isso é crucial para limpar o estado visual e garantir que o loop de histórico
-        #    (que está no topo) desenhe a lista de mensagens na ordem correta no próximo rerun.
+        # 7. FORÇA O REDRAW COMPLETO para sincronizar o histórico
         st.rerun() 
+
+else:
+    # 8. RESTAURADO: Mensagem de instrução inicial
+    st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
