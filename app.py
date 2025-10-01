@@ -378,15 +378,7 @@ if st.session_state.agent:
                 # Adiciona a resposta (ou erro) ao histórico da sessão
                 for message in st.session_state.messages:
                     with st.chat_message(message["role"]):
-                        if message["role"] == "user":
-                            # Usa HTML/CSS para alinhar o texto do usuário à direita
-                            st.markdown(
-                                f'<div style="text-align: right;">{message["content"]}</div>', 
-                                unsafe_allow_html=True
-                            )
-                        else:
-                            # Assistente (robô) permanece alinhado à esquerda
-                            st.markdown(message["content"])
+                    st.markdown(message["content"])
         
         # 5. Exibição de Gráfico Gerado (O Streamlit redesenha o histórico acima)
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
@@ -400,5 +392,6 @@ if st.session_state.agent:
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
