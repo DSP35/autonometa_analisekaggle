@@ -279,17 +279,23 @@ st.set_page_config(layout="wide")
 
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
-# Inicialização do Histórico de Chat
+# Inicialização do Histórico de Chat e Flags de Estado 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "initialized_chat" not in st.session_state:
+    st.session_state.initialized_chat = False # NOVO FLAG
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
-# Lógica de carregamento e inicialização do agente 
+# Lógica de carregamento e inicialização do agente
+# Esta lógica foca APENAS no carregamento do DF e do Agente.
 if uploaded_file is not None and (st.session_state.df is None or st.session_state.NOME_DO_ARQUIVO_REFERENCIA != uploaded_file.name):
-    # Limpa o histórico ao carregar um novo arquivo
+    
+    # Redefine o estado ao carregar um NOVO arquivo
     st.session_state.messages = [] 
+    st.session_state.initialized_chat = False # Reseta o flag para enviar nova saudação
+    
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
             df = pd.read_csv(uploaded_file)
@@ -299,13 +305,19 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
             
-            # Adiciona mensagem de boas-vindas ao histórico
-            st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
-            
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {e}")
             st.session_state.df = None
 
+# --- NOVO BLOCO DE CONTROLE DE MENSAGEM INICIAL ---
+# Adiciona mensagem de boas-vindas APENAS UMA VEZ após o agente estar pronto.
+if st.session_state.agent is not None and not st.session_state.initialized_chat:
+    
+    # 1. Adiciona a mensagem de boas-vindas ao histórico
+    st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
+    
+    # 2. Define o flag como True para que não seja mais executado
+    st.session_state.initialized_chat = True
 
 # --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
@@ -392,6 +404,7 @@ if st.session_state.agent:
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
