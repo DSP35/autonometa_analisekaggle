@@ -15,6 +15,8 @@ from ydata_profiling import ProfileReport
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
+from langchain.memory import ConversationBufferMemory
+from langchain.agents import AgentExecutor
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API (TOTALMENTE GENÉRICA) ---
 
@@ -221,7 +223,7 @@ def gerar_visualizacao(comando_grafico: str) -> str:
 
 @st.cache_resource(show_spinner="Inicializando o Agente de IA...")
 def create_agent(df: pd.DataFrame):
-    """Inicializa o agente de análise de dados."""
+    """Inicializa o agente de análise de dados com Memória Conversacional."""
     
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -235,13 +237,13 @@ def create_agent(df: pd.DataFrame):
     Siga as regras rigorosamente.
     """
     
-    tools = [
-        otimizar_tipos_de_dados_para_memoria, 
-        gerar_perfil_de_dados_e_salvar_html, 
-        gerar_visualizacao 
-    ]
-
-    agent = create_pandas_dataframe_agent(
+    memory = ConversationBufferMemory(
+        memory_key="chat_history", 
+        return_messages=True
+    )
+    
+    # 1. Cria o Agente base (retorna o objeto AgentType.OPENAI_TOOLS)
+    agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
@@ -251,7 +253,18 @@ def create_agent(df: pd.DataFrame):
         allow_dangerous_code=True,
         agent_kwargs={"prefix": CUSTOM_PREFIX}
     )
-    return agent
+    
+    # 2. Envolve o agente em um AgentExecutor com Memória
+    # Usaremos o AgentExecutor para gerenciar o estado da conversa.
+    executor = AgentExecutor(
+        agent=agent_framework.agent,
+        tools=agent_framework.tools,
+        memory=memory,
+        verbose=True, # Mantemos o verbose
+        handle_parsing_errors=True,
+    )
+    
+    return executor 
 
 
 # --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
@@ -357,7 +370,17 @@ if st.session_state.agent:
                     st.error(output_text)
 
                 # Adiciona a resposta (ou erro) ao histórico da sessão
-                st.session_state.messages.append({"role": "assistant", "content": output_text})
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        if message["role"] == "user":
+                            # Usa HTML/CSS para alinhar o texto do usuário à direita
+                            st.markdown(
+                                f'<div style="text-align: right;">{message["content"]}</div>', 
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            # Assistente (robô) permanece alinhado à esquerda
+                            st.markdown(message["content"])
         
         # 5. Exibição de Gráfico Gerado (O Streamlit redesenha o histórico acima)
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
@@ -371,3 +394,4 @@ if st.session_state.agent:
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
