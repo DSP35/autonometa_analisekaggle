@@ -8,3 +8,4 @@ langchain-experimental
 google-genai
 langchain-google-genai
 ydata-profiling
+setuptools
