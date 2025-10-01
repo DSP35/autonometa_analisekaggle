@@ -11,21 +11,30 @@ import sys
 import tempfile
 from ydata_profiling import ProfileReport
 
-# Importações LangChain/Gemini (Certifique-se de que as bibliotecas estão instaladas)
+# Importações LangChain/Gemini
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
 
-# --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
+# --- 1. CONFIGURAÇÃO INICIAL E CHAVE API (TOTALMENTE GENÉRICA) ---
 
 # Tenta ler a chave do Streamlit Secrets (modo recomendado no Streamlit Cloud)
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 except KeyError:
-    st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets.")
+    st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
     st.stop()
 
-# --- 2. FUNÇÕES DE AJUDA E FERRAMENTAS (@tool) ---
+# --- 2. VARIÁVEIS DE ESTADO E FUNÇÕES DE AJUDA ---
+
+# Inicialização de estado de sessão
+if 'df' not in st.session_state:
+    st.session_state.df = None
+if 'agent' not in st.session_state:
+    st.session_state.agent = None
+if 'NOME_DO_ARQUIVO_REFERENCIA' not in st.session_state:
+    st.session_state.NOME_DO_ARQUIVO_REFERENCIA = "Nenhum arquivo carregado"
+
 
 def get_data_for_high_cost_tool(df_global: pd.DataFrame, threshold: int = 100000) -> pd.DataFrame:
     """Retorna o DataFrame principal ou uma amostra de 100k linhas se ele for muito grande."""
@@ -50,6 +59,8 @@ def parse_comando_grafico(comando: str) -> tuple:
         return 'hist', parts[0], None
     return None, None, None
 
+
+# --- 3. FERRAMENTAS DO AGENTE (@tool) ---
 
 @tool
 def otimizar_tipos_de_dados_para_memoria() -> str:
@@ -166,7 +177,6 @@ def gerar_visualizacao(comando_grafico: str) -> str:
             sns.lineplot(x=data_to_plot[coluna_x], y=data_to_plot[coluna_y])
             plt.title(f'Evolução de {coluna_y} por {coluna_x}{base_title}')
         elif tipo_grafico == 'box':
-            # Simplificação da lógica de boxplot para Streamlit
             if coluna_y and data_to_plot[coluna_y].nunique() < 50:
                 sns.boxplot(x=data_to_plot[coluna_y], y=data_to_plot[coluna_x])
                 plt.xlabel(coluna_y)
@@ -207,7 +217,7 @@ def gerar_visualizacao(comando_grafico: str) -> str:
         plt.close()
 
 
-# --- 3. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
+# --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
 def create_agent(df: pd.DataFrame):
     """Inicializa o agente de análise de dados."""
@@ -243,7 +253,7 @@ def create_agent(df: pd.DataFrame):
     return agent
 
 
-# --- 4. INTERFACE STREAMLIT PRINCIPAL (main) ---
+# --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
 
 st.set_page_config(layout="wide")
 
@@ -252,16 +262,16 @@ st.title("🤖 Agente de Análise de Dados com Gemini")
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
-if 'df' not in st.session_state:
-    st.session_state.df = None
-
 # Lógica de carregamento e inicialização do agente
 if uploaded_file is not None and (st.session_state.df is None or st.session_state.NOME_DO_ARQUIVO_REFERENCIA != uploaded_file.name):
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
+            # Tentar ler o arquivo
             df = pd.read_csv(uploaded_file)
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
+            
+            # Inicializar agente apenas se o DF for válido
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
         except Exception as e:
@@ -297,13 +307,8 @@ if st.session_state.df is not None:
         st.markdown("---")
         st.info(f"**PERGUNTA:** {pergunta}")
         
-        # O Streamlit precisa capturar a saída verbose para exibição
-        # O Streamlit já tem um wrapper para sys.stdout, mas vamos usá-lo para exibir o rastreio
         with st.spinner('Pensando... O Agente está analisando e pode levar alguns segundos.'):
             # Crie um placeholder para a saída verbose
-            verbose_placeholder = st.empty()
-            
-            # Use um StringIO para capturar a saída (simulando verbose=True em console)
             output_buffer = io.StringIO()
             sys.stdout = output_buffer
             
@@ -331,7 +336,7 @@ if st.session_state.df is not None:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
-            del st.session_state.graph_buffer # Limpar o estado para o próximo gráfico
+            del st.session_state.graph_buffer 
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
