@@ -9,3 +9,4 @@ google-genai
 langchain-google-genai
 ydata-profiling
 setuptools
+tabulate
