@@ -219,6 +219,7 @@ def gerar_visualizacao(comando_grafico: str) -> str:
 
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
+@st.cache_resource(show_spinner="Inicializando o Agente de IA...")
 def create_agent(df: pd.DataFrame):
     """Inicializa o agente de análise de dados."""
     
@@ -257,7 +258,7 @@ def create_agent(df: pd.DataFrame):
 
 st.set_page_config(layout="wide")
 
-st.title("🤖 Agente de Análise de Dados com Gemini")
+st.title("🤖 Agente de Análise de Dados Autonometa")
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
@@ -299,6 +300,12 @@ if st.session_state.df is not None:
                     file_name="relatorio_perfil.html",
                     mime="text/html"
                 )
+            # --- Aprimoramento 3: Limpeza de Cache ---
+            try:
+                os.remove(st.session_state.profile_report_path)
+            except OSError:
+                pass # Ignora se o arquivo já foi removido ou não existe
+            del st.session_state.profile_report_path
         
     # Campo de Pergunta
     pergunta = st.text_input("Qual sua dúvida sobre os dados? (Ex: 'gere um histograma de Amount')", key="input_pergunta", disabled=(st.session_state.agent is None))
@@ -319,12 +326,23 @@ if st.session_state.df is not None:
                 sys.stdout = sys.__stdout__
                 
                 # Exibe o rastreio do Agente (verbose output)
+                # Mantemos o rastreio da execução aqui
                 with st.expander("Rastreio da Execução (Verbose)"):
                     st.code(output_buffer.getvalue(), language='log')
                 
-                # Exibe a resposta final
-                st.subheader("Resposta do Agente")
-                st.success(resposta['output'])
+                # --- Aprimoramento 2: Tratamento da Saída Final ---
+                output_text = resposta['output']
+                
+                # Verifica se a resposta foi gerada por uma de nossas ferramentas
+                # E se for uma resposta simples de 'Sucesso/Erro', exibe-a no verbose.
+                if output_text.startswith("Sucesso:") or output_text.startswith("Erro:"):
+                    st.subheader("Resposta do Agente")
+                    st.info(output_text) # Exibe como info, não como sucesso
+                else:
+                    # Se for uma análise estatística ou texto livre do LLM,
+                    # exibe como sucesso.
+                    st.subheader("Resposta do Agente")
+                    st.success(output_text)
                 
             except Exception as e:
                 # Restaura a saída padrão em caso de erro
@@ -340,3 +358,4 @@ if st.session_state.df is not None:
 
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
