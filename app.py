@@ -279,22 +279,22 @@ st.set_page_config(layout="wide")
 
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
-# Inicialização do Histórico de Chat e Flags de Estado 
+# Inicialização do Histórico de Chat e Flags de Estado
+# st.session_state.messages deve ser inicializado como uma lista vazia
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "initialized_chat" not in st.session_state:
-    st.session_state.initialized_chat = False # NOVO FLAG
+    st.session_state.initialized_chat = False
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
 # Lógica de carregamento e inicialização do agente
-# Esta lógica foca APENAS no carregamento do DF e do Agente.
 if uploaded_file is not None and (st.session_state.df is None or st.session_state.NOME_DO_ARQUIVO_REFERENCIA != uploaded_file.name):
     
     # Redefine o estado ao carregar um NOVO arquivo
     st.session_state.messages = [] 
-    st.session_state.initialized_chat = False # Reseta o flag para enviar nova saudação
+    st.session_state.initialized_chat = False 
     
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
@@ -309,14 +309,11 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.error(f"Erro ao ler o arquivo CSV: {e}")
             st.session_state.df = None
 
-# --- NOVO BLOCO DE CONTROLE DE MENSAGEM INICIAL ---
-# Adiciona mensagem de boas-vindas APENAS UMA VEZ após o agente estar pronto.
+# --- Bloco de Controle de Mensagem Inicial ---
 if st.session_state.agent is not None and not st.session_state.initialized_chat:
     
-    # 1. Adiciona a mensagem de boas-vindas ao histórico
     st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
     
-    # 2. Define o flag como True para que não seja mais executado
     st.session_state.initialized_chat = True
 
 # --- Bloco Lateral (Sidebar) ---
@@ -347,23 +344,22 @@ if st.session_state.df is not None:
             del st.session_state.profile_report_path
 
 
-# --- Exibição do Histórico de Chat ---
-# Remove os dados da barra lateral (col1, col2) e exibe o histórico no corpo principal
+# --- Exibição do Histórico de Chat (Loop Principal) ---
 for message in st.session_state.messages:
+    # Este loop desenha TODAS as mensagens salvas.
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        st.markdown(message["content"]) 
 
 # --- Campo de Entrada de Chat Fixo na Parte Inferior ---
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
     
     if pergunta:
-        # 1. Adiciona a pergunta do usuário ao histórico e exibe
+        # 1. Adiciona a pergunta do usuário ao histórico (APENAS ADD)
+        # O Streamlit irá redesenhar a tela e o loop acima cuidará da exibição.
         st.session_state.messages.append({"role": "user", "content": pergunta})
-        with st.chat_message("user"):
-            st.markdown(pergunta)
 
-        # 2. Executa o agente
+        # 2. Executa o agente (Use o placeholder do assistente para exibir o processamento)
         with st.chat_message("assistant"):
             with st.spinner("O Agente está pensando e analisando os dados..."):
                 output_buffer = io.StringIO()
@@ -373,38 +369,31 @@ if st.session_state.agent:
                     resposta = st.session_state.agent.invoke({"input": pergunta})
                     sys.stdout = sys.__stdout__
                     
-                    output_text = resposta['output']
+                    assistant_message_content = resposta['output']
                     
-                    # 3. Exibe a resposta final e a adiciona ao histórico
-                    st.markdown(output_text)
+                    # Exibe a resposta final e o verbose
+                    st.markdown(assistant_message_content) 
                     
-                    # 4. Exibe o rastreio (verbose) em um expander
                     with st.expander("Rastreio da Execução (Verbose)"):
                         st.code(output_buffer.getvalue(), language='log')
 
                 except Exception as e:
                     sys.stdout = sys.__stdout__
-                    output_text = f"❌ Erro na execução do Agente. Detalhe: {e}"
-                    st.error(output_text)
+                    assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
+                    st.error(assistant_message_content)
 
-                # Adiciona a resposta (ou erro) ao histórico da sessão
-                for message in st.session_state.messages:
-                    with st.chat_message(message["role"]):
-                        st.markdown(message["content"])
+                # 3. Adiciona a resposta final (ou erro) ao histórico da sessão
+                st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
         
-        # 5. Exibição de Gráfico Gerado (O Streamlit redesenha o histórico acima)
+        # 4. Exibição de Gráfico Gerado
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
             del st.session_state.graph_buffer
         
-        # Opcional: Reruns para garantir que o chat scroll para baixo
-        # st.rerun() # Descomentar se o chat não rolar automaticamente
-
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
 
 
 
