@@ -355,23 +355,28 @@ if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
     
     if pergunta:
-        # 1. Adiciona a pergunta do usuário ao histórico (APENAS ADD)
-        # O Streamlit irá redesenhar a tela e o loop acima cuidará da exibição.
+        # 1. Adiciona a pergunta do usuário ao histórico (para o próximo refresh)
         st.session_state.messages.append({"role": "user", "content": pergunta})
 
-        # 2. Executa o agente (Use o placeholder do assistente para exibir o processamento)
+        # 2. **DESENHA A MENSAGEM DO USUÁRIO IMEDIATAMENTE**
+        #    Isso garante que a mensagem do usuário apareça ANTES do spinner do assistente.
+        with st.chat_message("user"):
+            st.markdown(pergunta)
+        
+        # 3. Executa o agente e desenha a resposta do assistente
         with st.chat_message("assistant"):
             with st.spinner("O Agente está pensando e analisando os dados..."):
                 output_buffer = io.StringIO()
                 sys.stdout = output_buffer
                 
                 try:
+                    # Executa o agente
                     resposta = st.session_state.agent.invoke({"input": pergunta})
                     sys.stdout = sys.__stdout__
                     
                     assistant_message_content = resposta['output']
                     
-                    # Exibe a resposta final e o verbose
+                    # Exibe a resposta final
                     st.markdown(assistant_message_content) 
                     
                     with st.expander("Rastreio da Execução (Verbose)"):
@@ -382,18 +387,20 @@ if st.session_state.agent:
                     assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
                     st.error(assistant_message_content)
 
-                # 3. Adiciona a resposta final (ou erro) ao histórico da sessão
+                # 4. Adiciona a resposta final (ou erro) ao histórico da sessão
                 st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
         
-        # 4. Exibição de Gráfico Gerado
+        # 5. Exibição de Gráfico Gerado
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
             del st.session_state.graph_buffer
         
-else:
-    st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+        # 6. **FORÇA O REDRAW COMPLETO**
+        #    Isso é crucial para limpar o estado visual e garantir que o loop de histórico
+        #    (que está no topo) desenhe a lista de mensagens na ordem correta no próximo rerun.
+        st.rerun() 
 
 
 
