@@ -346,22 +346,23 @@ if st.session_state.agent:
                             st.code(output_buffer.getvalue(), language='log')
                     
                     except Exception as e:
-                    sys.stdout = sys.__stdout__
-                    error_msg = f"❌ Erro na execução do Agente: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                    
-                    # Persista o erro na session_state para exibição em reruns
-                    if 'last_error' not in st.session_state:
-                        st.session_state.last_error = []
-                    st.session_state.last_error.append(error_msg)
-                    
-                    # Exiba o erro de forma persistente
-                    st.error(error_msg)
-                    st.exception(e)  # Mostra o traceback completo
-                    
-                    # Logging opcional para console/debug (útil em deploy)
-                    logging.error(error_msg)
+                        sys.stdout = sys.__stdout__
+                        error_msg = f"❌ Erro na execução do Agente: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                        
+                        # Persista o erro na session_state para exibição em reruns
+                        if 'last_error' not in st.session_state:
+                            st.session_state.last_error = []
+                        st.session_state.last_error.append(error_msg)
+                        
+                        # Exiba o erro de forma persistente
+                        st.error(error_msg)
+                        st.exception(e)  # Mostra o traceback completo
+                        
+                        # Logging opcional para console/debug (útil em deploy)
+                        logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
