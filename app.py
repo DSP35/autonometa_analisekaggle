@@ -13,13 +13,13 @@ from ydata_profiling import ProfileReport
 
 # Importações LangChain/Gemini
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
 from langchain.memory import ConversationBufferWindowMemory # k=5 memory
 from langchain.agents import AgentExecutor # Para uso da memória
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import create_tool_calling_agent 
-from langchain_community.tools.dataframe import create_dataframe_agent 
+from langchain_experimental.tools.pandas.tool import create_pandas_dataframe_tool 
+
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 
@@ -224,6 +224,9 @@ def gerar_visualizacao(comando_grafico: str) -> str:
 
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
+# CÓDIGO FINAL E CORRIGIDO:
+# --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
+
 @st.cache_resource(show_spinner="Inicializando o Agente de IA...")
 def create_agent(df: pd.DataFrame):
     """Inicializa o agente de análise de dados com Memória Conversacional limitada (k=5)."""
@@ -236,8 +239,8 @@ def create_agent(df: pd.DataFrame):
     )
     
     # --- 1. FERRAMENTAS ---
-    # Usamos o DF como uma ferramenta separada, em vez de depender do create_pandas_dataframe_agent
-    df_tool = create_dataframe_agent(llm, df, verbose=False).tools[0]
+    # CORREÇÃO: Cria o objeto Tool de DataFrame usando a função estável
+    df_tool = create_pandas_dataframe_tool(df, llm=llm) 
     
     tools = [
         df_tool, # A ferramenta padrão de análise de DF
@@ -249,12 +252,11 @@ def create_agent(df: pd.DataFrame):
     # --- 2. CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5) ---
     memory = ConversationBufferWindowMemory(
         k=5, 
-        memory_key="chat_history", # A chave de memória
+        memory_key="chat_history", 
         return_messages=True
     )
     
     # --- 3. PROMPT CUSTOMIZADO COM PLACEHOLDER DE MEMÓRIA ---
-    # Usamos MessagesPlaceholder para injetar o histórico de forma nativa no prompt
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          """Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
@@ -264,24 +266,21 @@ def create_agent(df: pd.DataFrame):
             2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
          """),
         
-        MessagesPlaceholder(variable_name="chat_history"), # O placeholder da memória
+        MessagesPlaceholder(variable_name="chat_history"),
         ("user", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
     
-    # --- 4. CRIAÇÃO DO AGENTE (Conversational Agent) ---
-    # Cria o agente usando o prompt customizado e as ferramentas
+    # --- 4. CRIAÇÃO DO AGENTE (Tool Calling Agent) ---
     agent = create_tool_calling_agent(llm, tools, prompt)
     
     # --- 5. EXECUÇÃO COM MEMÓRIA ---
-    # O AgentExecutor é responsável por pegar a memória e injetar no placeholder
     executor = AgentExecutor(
         agent=agent,
         tools=tools,
-        memory=memory, # O AgentExecutor usa este objeto de memória
+        memory=memory,
         verbose=True,
         handle_parsing_errors=True,
-        # O histórico de memória é automaticamente injetado no 'chat_history'
     )
     
     return executor
@@ -418,5 +417,6 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
