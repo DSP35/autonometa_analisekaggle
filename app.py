@@ -264,29 +264,25 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
 # --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
     st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
+    st.sidebar.metric(label="Linhas", value=st.session_state.df.shape[0])
+    st.sidebar.metric(label="Colunas", value=st.session_state.df.shape[1])
     st.sidebar.markdown("**Amostragem de dados:**")
     st.sidebar.dataframe(st.session_state.df.head(5))
     
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.metric(label="Linhas", value=st.session_state.df.shape[0])
-        st.metric(label="Colunas", value=st.session_state.df.shape[1])
-        
-        # Botões de download do relatório de perfil (com limpeza)
-        if 'profile_report_path' in st.session_state:
-            with open(st.session_state.profile_report_path, "rb") as file:
-                st.download_button(
-                    label="📥 Baixar Relatório de Perfil (.html)",
-                    data=file,
-                    file_name="relatorio_perfil.html",
-                    mime="text/html"
-                )
-            try:
-                os.remove(st.session_state.profile_report_path)
-            except OSError:
-                pass
-            del st.session_state.profile_report_path
+    # Botões de download do relatório de perfil (com limpeza)
+    if 'profile_report_path' in st.session_state:
+        with open(st.session_state.profile_report_path, "rb") as file:
+            st.sidebar.download_button(
+                label="📥 Baixar Relatório de Perfil (.html)",
+                data=file,
+                file_name="relatorio_perfil.html",
+                mime="text/html"
+            )
+        try:
+            os.remove(st.session_state.profile_report_path)
+        except OSError:
+            pass
+        del st.session_state.profile_report_path
             
 # --- HISTÓRICO DE MENSAGENS (suporta dict e HumanMessage/AIMessage) ---
 
@@ -340,6 +336,7 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
