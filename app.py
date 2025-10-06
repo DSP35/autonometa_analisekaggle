@@ -15,8 +15,7 @@ from ydata_profiling import ProfileReport
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
-# --- NOVO PADRÃO ESTÁVEL DE MEMÓRIA ---
-from langchain.memory import ConversationBufferWindowMemory 
+from langchain.memory.buffer_window import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory 
 from langchain.agents import AgentExecutor # Para uso da memória
 
@@ -252,7 +251,7 @@ def create_agent(df: pd.DataFrame):
     """
 
     CUSTOM_SUFFIX = """
-    {chat_history}
+    {conversation_history}
     """
     
     # --- 2. CONFIGURAÇÃO DE MEMÓRIA (O Segredo da Estabilidade) ---
@@ -264,7 +263,7 @@ def create_agent(df: pd.DataFrame):
     memory = ConversationBufferWindowMemory(
         k=10, 
         chat_memory=history,
-        memory_key="chat_history", 
+        memory_key="conversation_history",
         return_messages=True
     )
     
@@ -424,4 +423,5 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
