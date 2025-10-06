@@ -316,8 +316,11 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             
             # Garante que o Agente seja criado apenas com um DF válido
             st.session_state.agent = create_agent(df)
+            
+            # ADIÇÃO: Inicialize a Memória com a Mensagem Inicial (dentro do try)
             initial_greeting = f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"
-st.session_state.agent.memory.save_context({"input": ""}, {"output": initial_greeting})
+            st.session_state.agent.memory.save_context({"input": ""}, {"output": initial_greeting})
+            
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
             
         except Exception as e:
@@ -422,6 +425,7 @@ if st.session_state.agent:
 else:
     # 8. RESTAURADO: Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
