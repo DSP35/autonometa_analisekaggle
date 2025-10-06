@@ -15,18 +15,19 @@ from ydata_profiling import ProfileReport
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.memory import ConversationBufferMemory
-from langchain.agents import AgentExecutor
+from langchain.memory import ConversationBufferWindowMemory # k=5 memory
+from langchain.agents import AgentExecutor # Para uso da memória
 
-# --- 1. CONFIGURAÇÃO INICIAL E CHAVE API (TOTALMENTE GENÉRICA) ---
 
-# Tenta ler a chave do Streamlit Secrets (modo recomendado no Streamlit Cloud)
+# --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
+
+# Tenta ler a chave do Streamlit Secrets
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 except KeyError:
     st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
     st.stop()
+
 
 # --- 2. VARIÁVEIS DE ESTADO E FUNÇÕES DE AJUDA ---
 
@@ -52,7 +53,7 @@ def parse_comando_grafico(comando: str) -> tuple:
         tipo = match.group(1)
         args = [a.strip().strip("'\"") for a in match.group(2).split(',') if a.strip()]
         coluna_x = args[0] if len(args) > 0 else None
-        coluna_y = args[1] if len(args) > 1 else None
+        coluna_y = args[1] if len(args) > 1 and args[1] != 'none' else None
         return tipo, coluna_x, coluna_y
     
     parts = [p.strip().strip("'\"") for p in comando.split(',') if p.strip()]
@@ -233,12 +234,14 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
-    # Prefix simples: Instrui o agente a usar histórico do input
+    # PREFIXO CUSTOMIZADO COM INJEÇÃO EXPLÍCITA DE HISTÓRICO
     CUSTOM_PREFIX = """
-    Você é um agente de ANÁLISE DE DADOS. Analise o DataFrame pandas carregado e gere visualizações, estatísticas ou perfis.
-    O input inclui o histórico de conversas anteriores. Use-o para contexto e respostas de follow-up (ex.: 'Como na sua pergunta anterior sobre a coluna X...').
-    Siga regras rigorosas. Use ferramentas só quando necessário.
-    Formato ReAct: Thought: [pensamento] | Action: [ferramenta] | Action Input: [input] | Observation: [resultado].
+    Você é um agente de ANÁLISE DE DADOS. Sua principal função é analisar o DataFrame pandas carregado e gerar visualizações, estatísticas ou perfis.
+    Siga as regras rigorosamente.
+
+    O histórico de conversas anterior está disponível abaixo. Use-o para responder a perguntas de acompanhamento, como 'e a média disso?'.
+    HISTÓRICO:
+    {chat_history}
     """
     
     tools = [
@@ -247,36 +250,36 @@ def create_agent(df: pd.DataFrame):
         gerar_visualizacao 
     ]
     
-    # Memória com k=5 (usada só para load/save)
+    # CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5)
     memory = ConversationBufferWindowMemory(
         k=5, 
-        memory_key="chat_history", 
+        memory_key="chat_history", # Deve ser a mesma chave usada no PREFIXO
         return_messages=True
     )
     
-    # Agente padrão (sem vars extras)
-    agent_kwargs = {"prefix": CUSTOM_PREFIX}
-    agent = create_pandas_dataframe_agent(
+    # 1. Cria o Agente base
+    agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
-        agent_type="zero-shot-react-description",
+        agent_type="openai-tools",
         extra_tools=tools, 
         handle_parsing_errors=True,
         allow_dangerous_code=True,
-        agent_kwargs=agent_kwargs
+        agent_kwargs={"prefix": CUSTOM_PREFIX} 
     )
     
-    # Executor com memória (ele usa a memória internamente, mas nós formatamos o input)
+    # 2. Envolve o agente em um AgentExecutor com Memória
     executor = AgentExecutor(
-        agent=agent.agent,
-        tools=agent.tools,
+        agent=agent_framework.agent,
+        tools=agent_framework.tools,
         memory=memory, 
         verbose=True,
-        handle_parsing_errors=True
+        handle_parsing_errors=True,
     )
     
     return executor
+
 
 # --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
 
@@ -307,13 +310,7 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
             
-            # Garante que o Agente seja criado apenas com um DF válido
             st.session_state.agent = create_agent(df)
-            
-            # Inicialize a Memória com a Mensagem Inicial (dentro do try)
-            initial_greeting = f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"
-            st.session_state.agent.memory.save_context({"input": ""}, {"output": initial_greeting})
-            
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
             
         except Exception as e:
@@ -359,7 +356,6 @@ if st.session_state.df is not None:
 
 # --- Exibição do Histórico de Chat (Loop Principal) ---
 for message in st.session_state.messages:
-    # Este loop desenha TODAS as mensagens salvas.
     with st.chat_message(message["role"]):
         st.markdown(message["content"]) 
 
@@ -382,43 +378,24 @@ if st.session_state.agent:
                 output_buffer = io.StringIO()
                 sys.stdout = output_buffer
                 
-            try:
-                # Carregue o histórico da memória
-                memory_vars = st.session_state.agent.memory.load_memory_variables({})
-                chat_history = memory_vars.get("chat_history", [])
-                
-                # Formate o histórico como string (Human: ... AI: ...)
-                chat_history_str = ""
-                if chat_history:
-                    for msg in chat_history:
-                        role = "Human" if msg.type == "human" else "AI"
-                        chat_history_str += f"{role}: {msg.content}\n"
-                
-                # Formate o input completo: histórico + pergunta atual
-                formatted_input = f"Histórico de conversas anteriores:\n{chat_history_str}\n\nPergunta atual: {pergunta}"
-                
-                # Invoke com APENAS {"input": ...} — resolve o erro de keys
-                resposta = st.session_state.agent.invoke({"input": formatted_input})
-                sys.stdout = sys.__stdout__
-                
-                assistant_message_content = resposta['output']
-                
-                # Exibe a resposta final
-                st.markdown(assistant_message_content)
-                
-                # Salvamento explícito (reforço para memória)
-                st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
-                
-                # 4. Rastreio da Execução (Verbose)
-                with st.expander("Rastreio da Execução (Verbose)"):
-                    st.code(output_buffer.getvalue(), language='log')
-            
-            except Exception as e:
-                sys.stdout = sys.__stdout__
-                assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
-                st.error(assistant_message_content)
-                # Salve erro na memória também
-                st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
+                try:
+                    # Executa o agente
+                    resposta = st.session_state.agent.invoke({"input": pergunta})
+                    sys.stdout = sys.__stdout__
+                    
+                    assistant_message_content = resposta['output']
+                    
+                    # Exibe a resposta final
+                    st.markdown(assistant_message_content) 
+                    
+                    # 4. Rastreio da Execução (Verbose)
+                    with st.expander("Rastreio da Execução (Verbose)"):
+                        st.code(output_buffer.getvalue(), language='log')
+
+                except Exception as e:
+                    sys.stdout = sys.__stdout__
+                    assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
+                    st.error(assistant_message_content)
 
                 # 5. Adiciona a resposta final (ou erro) ao histórico da sessão
                 st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
@@ -434,17 +411,5 @@ if st.session_state.agent:
         st.rerun() 
 
 else:
-    # 8. RESTAURADO: Mensagem de instrução inicial
+    # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
-
-
-
-
-
-
-
-
-
-
-
