@@ -15,6 +15,7 @@ from ydata_profiling import ProfileReport
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
+from langchain.memory import ConversationBufferWindowMemory
 from langchain.memory import ConversationBufferMemory
 from langchain.agents import AgentExecutor
 
@@ -223,7 +224,7 @@ def gerar_visualizacao(comando_grafico: str) -> str:
 
 @st.cache_resource(show_spinner="Inicializando o Agente de IA...")
 def create_agent(df: pd.DataFrame):
-    """Inicializa o agente de análise de dados com Memória Conversacional."""
+    """Inicializa o agente de análise de dados com Memória Conversacional limitada (k=5)."""
     
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -237,15 +238,15 @@ def create_agent(df: pd.DataFrame):
     Siga as regras rigorosamente.
     """
 
-    # --- CORREÇÃO DE ESCOPO: DEFINIÇÃO DA LISTA DE FERRAMENTAS DENTRO DA FUNÇÃO ---
     tools = [
         otimizar_tipos_de_dados_para_memoria, 
         gerar_perfil_de_dados_e_salvar_html, 
         gerar_visualizacao 
     ]
     
-    # --- CONFIGURAÇÃO DE MEMÓRIA ---
-    memory = ConversationBufferMemory(
+    # --- CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5) ---
+    memory = ConversationBufferWindowMemory(
+        k=5, # Limita o contexto às últimas 5 trocas de mensagem
         memory_key="chat_history", 
         return_messages=True
     )
@@ -256,7 +257,7 @@ def create_agent(df: pd.DataFrame):
         df,
         verbose=True,
         agent_type="openai-tools",
-        extra_tools=tools, # 'tools' agora está definido
+        extra_tools=tools, 
         handle_parsing_errors=True,
         allow_dangerous_code=True,
         agent_kwargs={"prefix": CUSTOM_PREFIX}
@@ -266,7 +267,7 @@ def create_agent(df: pd.DataFrame):
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
-        memory=memory,
+        memory=memory, # O AgentExecutor usa este objeto de memória
         verbose=True,
         handle_parsing_errors=True,
     )
@@ -407,6 +408,7 @@ if st.session_state.agent:
 else:
     # 8. RESTAURADO: Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
