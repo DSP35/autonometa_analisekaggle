@@ -10,6 +10,7 @@ import io
 import sys
 import tempfile
 import traceback
+import base64
 from ydata_profiling import ProfileReport
 
 # --- LangChain / Gemini ---
@@ -168,6 +169,7 @@ def gerar_visualizacao(comando_grafico: str) -> str:
             return f"Erro: Tipo '{tipo_grafico}' não suportado."
         plt.tight_layout()
         plt.savefig(buffer, format='png')
+        buffer.seek(0)
         plt.close()
         st.session_state.graph_buffer = buffer.getvalue()
         st.session_state.graph_filename = f"grafico_{tipo_grafico}_{coluna_x}.png"
@@ -329,13 +331,15 @@ if st.session_state.agent:
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
-            st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
+            img_base64 = base64.b64encode(st.session_state.graph_buffer).decode()
+            st.markdown(f'![{st.session_state.graph_filename}](data:image/png;base64,{img_base64})')
             del st.session_state.graph_buffer
             del st.session_state.graph_filename
 
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
