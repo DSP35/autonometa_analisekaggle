@@ -315,13 +315,15 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
     
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
-            df = pd.read_csv(uploaded_file)
+            content = uploaded_file.getvalue().decode('utf-8-sig')
+            df = pd.read_csv(io.StringIO(content), sep=None, engine='python')  # detecta separador automaticamente
+            
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
             
-            # CRIAÇÃO DO AGENTE (Não está mais em cache e usa memória Streamlit nativa)
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
+
             
         except Exception as e:
             st.error(f"Erro ao ler o arquivo CSV: {e}")
@@ -422,3 +424,4 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
