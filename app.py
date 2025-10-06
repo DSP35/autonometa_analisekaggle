@@ -320,9 +320,30 @@ if st.session_state.agent:
                     resposta = st.session_state.agent.invoke({"input": pergunta})
                     sys.stdout = sys.__stdout__
                     assistant_message_content = resposta['output']
+                
+                    # Se gráfico foi gerado, anexe o markdown base64 à content do assistente
+                    if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
+                        st.markdown("---")  # Separador opcional
+                        st.subheader("Gráfico Gerado")  # Cabeçalho opcional, agora dentro da bolha
+                        buffer.seek(0)  # Garanta que o buffer esteja no início (adicione buffer.seek(0) na tool se não estiver)
+                        img_base64 = base64.b64encode(st.session_state.graph_buffer).decode()
+                        img_markdown = f'![{st.session_state.graph_filename}](data:image/png;base64,{img_base64})'
+                        
+                        # Anexe à content
+                        assistant_message_content += f"\n\n{img_markdown}"
+                        
+                        # Atualize a última mensagem na session_state (já que memory atualizou com output original)
+                        if st.session_state.messages and isinstance(st.session_state.messages[-1], AIMessage):
+                            st.session_state.messages[-1].content = assistant_message_content
+                        
+                        del st.session_state.graph_buffer
+                        del st.session_state.graph_filename
+                
                     st.markdown(assistant_message_content)
+                
                     with st.expander("Rastreio da Execução (Verbose)"):
                         st.code(output_buffer.getvalue(), language='log')
+                
                 except Exception as e:
                     sys.stdout = sys.__stdout__
                     assistant_message_content = f"❌ Erro na execução do Agente: {e}"
@@ -339,6 +360,7 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
