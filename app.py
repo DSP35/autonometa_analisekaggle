@@ -233,15 +233,18 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
-    # --- FIX CRÍTICO: INJETAR O HISTÓRICO NO PREFIXO PARA FORÇAR O LLM A USÁ-LO ---
-    # Adicionamos {chat_history} e uma instrução clara.
-    CUSTOM_PREFIX = """
+    # Prompt customizado para ReAct, com instrução explícita para usar histórico
+    CUSTOM_PROMPT = """
     Você é um agente de ANÁLISE DE DADOS. Sua principal função é analisar o DataFrame pandas carregado e gerar visualizações, estatísticas ou perfis.
-    Siga as regras rigorosamente.
-
-    O histórico de conversas anterior está disponível abaixo. Use-o para responder a perguntas de acompanhamento, como 'e a média disso?'.
-    HISTÓRICO:
+    Siga as regras rigorosamente. Use ferramentas apenas quando necessário (ex.: para gráficos ou perfis).
+    
+    Histórico de conversas anteriores:
     {chat_history}
+    
+    Pergunta atual: {input}
+    
+    Responda de forma concisa, referenciando o histórico se relevante (ex.: 'Como na sua pergunta anterior sobre X...').
+    Se precisar de ação, use o formato ReAct: Thought: [pensamento] | Action: [ferramenta] | Observation: [resultado].
     """
     
     tools = [
@@ -250,34 +253,35 @@ def create_agent(df: pd.DataFrame):
         gerar_visualizacao 
     ]
     
-    # CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5)
-    # A chave "chat_history" deve ser a mesma usada no prefixo.
+    # Memória com k=5 (mantida igual)
     memory = ConversationBufferWindowMemory(
         k=5, 
         memory_key="chat_history", 
         return_messages=True
     )
     
-    # 1. Cria o Agente base (Agent Framework)
-    agent_framework = create_pandas_dataframe_agent(
+    # Testandoc com 'zero-shot-react-description' para melhor suporte a memória em chat models
+    agent = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
-        agent_type="openai-tools",
+        agent_type="zero-shot-react-description",  # Mais compatível com Gemini e memória
         extra_tools=tools, 
         handle_parsing_errors=True,
         allow_dangerous_code=True,
-        # O prefixo customizado é passado aqui
-        agent_kwargs={"prefix": CUSTOM_PREFIX} 
+        # Passe o prompt completo via agent_kwargs
+        agent_kwargs={
+            "prefix": CUSTOM_PROMPT.format(chat_history="", input="") 
+        }
     )
     
-    # 2. Envolve o agente em um AgentExecutor com Memória
     executor = AgentExecutor(
-        agent=agent_framework.agent,
-        tools=agent_framework.tools,
+        agent=agent.agent,
+        tools=agent.tools,
         memory=memory, 
         verbose=True,
         handle_parsing_errors=True,
+        agent_kwargs={"input_variables": ["chat_history", "input"]}
     )
     
     return executor
@@ -293,7 +297,6 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "initialized_chat" not in st.session_state:
     st.session_state.initialized_chat = False
-
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
@@ -313,6 +316,8 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             
             # Garante que o Agente seja criado apenas com um DF válido
             st.session_state.agent = create_agent(df)
+            initial_greeting = f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"
+st.session_state.agent.memory.save_context({"input": ""}, {"output": initial_greeting})
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
             
         except Exception as e:
@@ -390,6 +395,7 @@ if st.session_state.agent:
                     
                     # Exibe a resposta final
                     st.markdown(assistant_message_content) 
+                    st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
                     
                     # 4. RESTAURADO: Rastreio da Execução (Verbose)
                     with st.expander("Rastreio da Execução (Verbose)"):
@@ -416,6 +422,7 @@ if st.session_state.agent:
 else:
     # 8. RESTAURADO: Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
