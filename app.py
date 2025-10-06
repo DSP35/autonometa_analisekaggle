@@ -318,48 +318,48 @@ if st.session_state.agent:
             with st.spinner("O Agente está pensando..."):
                 output_buffer = io.StringIO()
                 sys.stdout = output_buffer
-                    try:
-                        resposta = st.session_state.agent.invoke({"input": pergunta})
-                        sys.stdout = sys.__stdout__
-                        assistant_message_content = resposta['output']
-                    
-                        # Se gráfico foi gerado, anexe o markdown base64 à content do assistente
-                        if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
-                            st.markdown("---")  # Separador opcional
-                            st.subheader("Gráfico Gerado")  # Cabeçalho opcional, agora dentro da bolha
-                            img_base64 = base64.b64encode(st.session_state.graph_buffer).decode()
-                            img_markdown = f'![{st.session_state.graph_filename}](data:image/png;base64,{img_base64})'
-                            
-                            # Anexe à content
-                            assistant_message_content += f"\n\n{img_markdown}"
-                            
-                            # Atualize a última mensagem na session_state (já que memory atualizou com output original)
-                            if st.session_state.messages and isinstance(st.session_state.messages[-1], AIMessage):
-                                st.session_state.messages[-1].content = assistant_message_content
-                            
-                            del st.session_state.graph_buffer
-                            del st.session_state.graph_filename
-                    
-                        st.markdown(assistant_message_content)
-                    
-                        with st.expander("Rastreio da Execução (Verbose)"):
-                            st.code(output_buffer.getvalue(), language='log')
-                    
-                    except Exception as e:
-                        sys.stdout = sys.__stdout__
-                        error_msg = f"❌ Erro na execução do Agente: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                try:
+                    resposta = st.session_state.agent.invoke({"input": pergunta})
+                    sys.stdout = sys.__stdout__
+                    assistant_message_content = resposta['output']
+
+                    # Se gráfico foi gerado, anexe o markdown base64 à content do assistente
+                    if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
+                        st.markdown("---")  # Separador opcional
+                        st.subheader("Gráfico Gerado")  # Cabeçalho opcional, agora dentro da bolha
+                        img_base64 = base64.b64encode(st.session_state.graph_buffer).decode()
+                        img_markdown = f'![{st.session_state.graph_filename}](data:image/png;base64,{img_base64})'
                         
-                        # Persista o erro na session_state para exibição em reruns
-                        if 'last_error' not in st.session_state:
-                            st.session_state.last_error = []
-                        st.session_state.last_error.append(error_msg)
+                        # Anexe à content
+                        assistant_message_content += f"\n\n{img_markdown}"
                         
-                        # Exiba o erro de forma persistente
-                        st.error(error_msg)
-                        st.exception(e)  # Mostra o traceback completo
+                        # Atualize a última mensagem na session_state (já que memory atualizou com output original)
+                        if st.session_state.messages and isinstance(st.session_state.messages[-1], AIMessage):
+                            st.session_state.messages[-1].content = assistant_message_content
                         
-                        # Logging opcional para console/debug (útil em deploy)
-                        logging.error(error_msg)
+                        del st.session_state.graph_buffer
+                        del st.session_state.graph_filename
+
+                    st.markdown(assistant_message_content)
+
+                    with st.expander("Rastreio da Execução (Verbose)"):
+                        st.code(output_buffer.getvalue(), language='log')
+
+                except Exception as e:
+                    sys.stdout = sys.__stdout__
+                    error_msg = f"❌ Erro na execução do Agente: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    
+                    # Persista o erro na session_state para exibição em reruns
+                    if 'last_error' not in st.session_state:
+                        st.session_state.last_error = []
+                    st.session_state.last_error.append(error_msg)
+                    
+                    # Exiba o erro de forma persistente
+                    st.error(error_msg)
+                    st.exception(e)  # Mostra o traceback completo
+                    
+                    # Logging opcional para console/debug (útil em deploy)
+                    logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
 
