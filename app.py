@@ -18,8 +18,7 @@ from langchain.memory import ConversationBufferWindowMemory # k=5 memory
 from langchain.agents import AgentExecutor # Para uso da memória
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import create_tool_calling_agent 
-from langchain_experimental.tools.pandas.tool import create_pandas_dataframe_tool 
-
+from langchain_experimental.tools.pandas import create_pandas_dataframe_tool 
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 
@@ -30,7 +29,6 @@ except KeyError:
     st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
     st.stop()
 
-
 # --- 2. VARIÁVEIS DE ESTADO E FUNÇÕES DE AJUDA ---
 
 # Inicialização de estado de sessão
@@ -40,7 +38,6 @@ if 'agent' not in st.session_state:
     st.session_state.agent = None
 if 'NOME_DO_ARQUIVO_REFERENCIA' not in st.session_state:
     st.session_state.NOME_DO_ARQUIVO_REFERENCIA = "Nenhum arquivo carregado"
-
 
 def get_data_for_high_cost_tool(df_global: pd.DataFrame, threshold: int = 100000) -> pd.DataFrame:
     """Retorna o DataFrame principal ou uma amostra de 100k linhas se ele for muito grande."""
@@ -64,7 +61,6 @@ def parse_comando_grafico(comando: str) -> tuple:
     elif len(parts) == 1:
         return 'hist', parts[0], None
     return None, None, None
-
 
 # --- 3. FERRAMENTAS DO AGENTE (@tool) ---
 
@@ -222,9 +218,6 @@ def gerar_visualizacao(comando_grafico: str) -> str:
     finally:
         plt.close()
 
-# --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
-
-# CÓDIGO FINAL E CORRIGIDO:
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
 @st.cache_resource(show_spinner="Inicializando o Agente de IA...")
@@ -417,6 +410,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
