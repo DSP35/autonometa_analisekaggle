@@ -243,7 +243,7 @@ def create_agent(df: pd.DataFrame):
 st.set_page_config(layout="wide")
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
-st.sidebar.image("https://i.imgur.com/oH1wbZ4.png", width=200)
+st.sidebar.image("https://i.imgur.com/oH1wbZ4.png", width=150)
 
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
@@ -267,7 +267,6 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.session_state.df = None
 
 # --- Bloco Lateral (Sidebar) ---
-st.sidebar.image("https://i.imgur.com/oH1wbZ4.png", width=200)
 if st.session_state.df is not None:
     st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
     st.sidebar.metric(label="Linhas", value=st.session_state.df.shape[0])
@@ -365,6 +364,7 @@ if st.session_state.agent:
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
