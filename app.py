@@ -294,6 +294,7 @@ if "messages" not in st.session_state:
 if "initialized_chat" not in st.session_state:
     st.session_state.initialized_chat = False
 
+
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
@@ -313,7 +314,7 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             # Garante que o Agente seja criado apenas com um DF válido
             st.session_state.agent = create_agent(df)
             
-            # ADIÇÃO: Inicialize a Memória com a Mensagem Inicial (dentro do try)
+            # Inicialize a Memória com a Mensagem Inicial (dentro do try)
             initial_greeting = f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"
             st.session_state.agent.memory.save_context({"input": ""}, {"output": initial_greeting})
             
@@ -380,47 +381,46 @@ if st.session_state.agent:
             st.markdown(pergunta)
         
         # 3. Executa o agente e desenha a resposta do assistente
-       # 3. Executa o agente e desenha a resposta do assistente
-with st.chat_message("assistant"):
-    with st.spinner("O Agente está pensando e analisando os dados..."):
-        output_buffer = io.StringIO()
-        sys.stdout = output_buffer
-        
-        try:
-            # CARREGAMENTO MANUAL DO HISTÓRICO (CHAVE DA FIX)
-            chat_history = st.session_state.agent.memory.load_memory_variables({})["chat_history"]
-            
-            # Invoke com dict completo (inclui histórico e vars padrão)
-            input_dict = {
-                "input": pergunta,
-                "chat_history": chat_history,
-                "agent_scratchpad": "",  # Placeholder para ReAct
-                "df_head": st.session_state.df.head(3).to_json()  # Preview de dados para contexto
-            }
-            
-            resposta = st.session_state.agent.invoke(input_dict)
-            sys.stdout = sys.__stdout__
-            
-            assistant_message_content = resposta['output']
-            
-            # Exibe a resposta final
-            st.markdown(assistant_message_content)
-            
-            # Salvamento explícito no histórico (reforço)
-            st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
-            
-            # 4. Rastreio da Execução (Verbose)
-            with st.expander("Rastreio da Execução (Verbose)"):
-                st.code(output_buffer.getvalue(), language='log')
+        with st.chat_message("assistant"):
+            with st.spinner("O Agente está pensando e analisando os dados..."):
+                output_buffer = io.StringIO()
+                sys.stdout = output_buffer
+                
+                try:
+                    # CARREGAMENTO MANUAL DO HISTÓRICO (CHAVE DA FIX)
+                    chat_history = st.session_state.agent.memory.load_memory_variables({})["chat_history"]
+                    
+                    # Invoke com dict completo (inclui histórico e vars padrão)
+                    input_dict = {
+                        "input": pergunta,
+                        "chat_history": chat_history,
+                        "agent_scratchpad": "",  # Placeholder para ReAct
+                        "df_head": st.session_state.df.head(3).to_json()  # Preview de dados para contexto
+                    }
+                    
+                    resposta = st.session_state.agent.invoke(input_dict)
+                    sys.stdout = sys.__stdout__
+                    
+                    assistant_message_content = resposta['output']
+                    
+                    # Exibe a resposta final
+                    st.markdown(assistant_message_content)
+                    
+                    # Salvamento explícito no histórico (reforço)
+                    st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
+                    
+                    # 4. Rastreio da Execução (Verbose)
+                    with st.expander("Rastreio da Execução (Verbose)"):
+                        st.code(output_buffer.getvalue(), language='log')
 
-        except Exception as e:
-            sys.stdout = sys.__stdout__
-            assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
-            st.error(assistant_message_content)
-            st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
+                except Exception as e:
+                    sys.stdout = sys.__stdout__
+                    assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
+                    st.error(assistant_message_content)
+                    st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
 
-        # 5. Adiciona ao histórico da sessão
-        st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
+                # 5. Adiciona a resposta final (ou erro) ao histórico da sessão
+                st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
         
         # 6. Exibição de Gráfico Gerado
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
@@ -435,6 +435,7 @@ with st.chat_message("assistant"):
 else:
     # 8. RESTAURADO: Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
