@@ -15,9 +15,10 @@ from ydata_profiling import ProfileReport
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
+# --- NOVO PADRÃO ESTÁVEL DE MEMÓRIA ---
 from langchain.memory import ConversationBufferWindowMemory 
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory # NOVO!
-from langchain.agents import AgentExecutor
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory 
+from langchain.agents import AgentExecutor # Para uso da memória
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 
@@ -37,6 +38,7 @@ if 'agent' not in st.session_state:
     st.session_state.agent = None
 if 'NOME_DO_ARQUIVO_REFERENCIA' not in st.session_state:
     st.session_state.NOME_DO_ARQUIVO_REFERENCIA = "Nenhum arquivo carregado"
+# O histórico é inicializado implicitamente pelo StreamlitChatMessageHistory (key="messages")
 
 def get_data_for_high_cost_tool(df_global: pd.DataFrame, threshold: int = 100000) -> pd.DataFrame:
     """Retorna o DataFrame principal ou uma amostra de 100k linhas se ele for muito grande."""
@@ -235,9 +237,18 @@ def create_agent(df: pd.DataFrame):
         gerar_visualizacao 
     ]
     
-    # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO (MANTIDO) ---
+    # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO ---
+    
     CUSTOM_PREFIX = """
-    ... (Mantenha o seu prefixo aqui) ...
+    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
+
+    **INSTRUÇÃO CRÍTICA SOBRE CAPACIDADES:**
+    Quando o usuário perguntar 'O que você pode fazer?', 'Quais são suas capacidades?' ou similar, você DEVE responder com uma lista amigável e de alto nível, EVITANDO EXPOR NOMES DE FERRAMENTAS (como 'otimizar_tipos_de_dados_para_memoria') ou SINTAXE DE CÓDIGO (como 'default_api.tool_name' ou 'python_repl_ast').
+    Exemplo de resposta amigável: 'Eu posso gerar relatórios de perfil de dados, otimizar o uso de memória do arquivo e criar diversos tipos de gráficos.'
+
+    **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
+    1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento, como 'e a média disso?'.
+    2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
     """
 
     CUSTOM_SUFFIX = """
@@ -246,14 +257,13 @@ def create_agent(df: pd.DataFrame):
     
     # --- 2. CONFIGURAÇÃO DE MEMÓRIA (O Segredo da Estabilidade) ---
     
-    # 2a. O histórico real que usa o st.session_state.messages
+    # 2a. O histórico real que usa o st.session_state.messages (CORRIGE O CONFLITO)
     history = StreamlitChatMessageHistory(key="messages")
     
     # 2b. O objeto de memória que usa o histórico acima e TRUNCA a janela para 10
-    # Isso resolve o aviso de deprecation indiretamente e resolve o conflito de chave.
     memory = ConversationBufferWindowMemory(
         k=10, 
-        chat_memory=history,          # Usa o objeto Streamlit como armazenamento
+        chat_memory=history,
         memory_key="chat_history", 
         return_messages=True
     )
@@ -266,11 +276,12 @@ def create_agent(df: pd.DataFrame):
         agent_type="openai-tools", 
         extra_tools=tools, 
         allow_dangerous_code=True,
+        # INJETAMOS O PREFIXO E SUFIXO
         prefix=CUSTOM_PREFIX,
         suffix=CUSTOM_SUFFIX
     )
     
-    # --- 4. EXECUÇÃO COM MEMÓRIA (MANTIDO) ---
+    # --- 4. EXECUÇÃO COM MEMÓRIA ---
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
@@ -288,8 +299,10 @@ st.set_page_config(layout="wide")
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
 # Inicialização do Histórico de Chat e Flags de Estado
+# O histórico de mensagens é a única fonte de verdade para o chat.
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
@@ -299,7 +312,6 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
     
     # Redefine o estado ao carregar um NOVO arquivo
     st.session_state.messages = [] 
-    st.session_state.initialized_chat = False 
     
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
@@ -307,6 +319,7 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
             
+            # CRIAÇÃO DO AGENTE (Não está mais em cache e usa memória Streamlit nativa)
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
             
@@ -316,12 +329,10 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
 
 
 # --- Bloco de Controle de Mensagem Inicial ---
-if st.session_state.agent is not None and not st.session_state.initialized_chat:
+if st.session_state.agent is not None and not st.session_state.messages:
     
     st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
     
-    st.session_state.initialized_chat = True
-
 
 # --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
@@ -403,6 +414,7 @@ if st.session_state.agent:
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
             del st.session_state.graph_buffer
+            del st.session_state.graph_filename # Limpeza completa
         
         # 7. FORÇA O REDRAW COMPLETO para sincronizar o histórico
         st.rerun() 
@@ -410,13 +422,3 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
-
-
-
-
-
-
-
-
-
