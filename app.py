@@ -62,6 +62,7 @@ def parse_comando_grafico(comando: str) -> tuple:
 
 @tool
 def otimizar_tipos_de_dados_para_memoria() -> str:
+    """Otimiza os tipos de dados numéricos do DataFrame para reduzir uso de memória."""
     df = st.session_state.df
     if df is None: return "Erro: DataFrame não carregado."
     initial_mem = df.memory_usage(deep=True).sum()
@@ -83,6 +84,7 @@ def otimizar_tipos_de_dados_para_memoria() -> str:
 
 @tool
 def gerar_perfil_de_dados_e_salvar_html() -> str:
+    """Gera o perfil de dados em HTML."""
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_profile = get_data_for_high_cost_tool(df)
@@ -104,6 +106,7 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
 
 @tool
 def gerar_visualizacao(comando_grafico: str) -> str:
+    """Gera um gráfico para análise dos dados."""
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_plot = get_data_for_high_cost_tool(df)
@@ -302,3 +305,4 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
