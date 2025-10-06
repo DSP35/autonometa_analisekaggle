@@ -233,19 +233,17 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
-    # Prompt customizado para ReAct, com instrução explícita para usar histórico
-    CUSTOM_PROMPT = """
-    Você é um agente de ANÁLISE DE DADOS. Sua principal função é analisar o DataFrame pandas carregado e gerar visualizações, estatísticas ou perfis.
-    Siga as regras rigorosamente. Use ferramentas apenas quando necessário (ex.: para gráficos ou perfis).
-    
-    Histórico de conversas anteriores:
+    # Prompt customizado para ReAct, com placeholders explícitos
+    CUSTOM_PROMPT = """You are a data analysis agent. Analyze the loaded pandas DataFrame and generate visualizations, stats, or profiles.
+    Use the following conversation history to maintain context and answer follow-ups (e.g., 'As in your previous question about X...').
+
+    Conversation History:
     {chat_history}
-    
-    Pergunta atual: {input}
-    
-    Responda de forma concisa, referenciando o histórico se relevante (ex.: 'Como na sua pergunta anterior sobre X...').
-    Se precisar de ação, use o formato ReAct: Thought: [pensamento] | Action: [ferramenta] | Observation: [resultado].
-    """
+
+    Question: {input}
+
+    Use tools only when needed. Format: Thought: [reason] | Action: [tool] | Action Input: [input] | Observation: [result].
+    Final Answer: [concise response based on data and history]."""
     
     tools = [
         otimizar_tipos_de_dados_para_memoria, 
@@ -253,35 +251,33 @@ def create_agent(df: pd.DataFrame):
         gerar_visualizacao 
     ]
     
-    # Memória com k=5 (mantida igual)
+    # Memória com k=5
     memory = ConversationBufferWindowMemory(
         k=5, 
         memory_key="chat_history", 
         return_messages=True
     )
     
-    # Testandoc com 'zero-shot-react-description' para melhor suporte a memória em chat models
+    # Agente com vars completas para pandas + memória
     agent = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
-        agent_type="zero-shot-react-description",  # Mais compatível com Gemini e memória
+        agent_type="zero-shot-react-description",
         extra_tools=tools, 
         handle_parsing_errors=True,
         allow_dangerous_code=True,
-        # Passe o prompt completo via agent_kwargs
-        agent_kwargs={
-            "prefix": CUSTOM_PROMPT.format(chat_history="", input="") 
-        }
+        prefix=CUSTOM_PROMPT,  # Prefix direto (sem .format aqui)
+        input_variables=["input", "chat_history", "agent_scratchpad", "df_head"]  # Vars essenciais
     )
     
+    # Executor com memória
     executor = AgentExecutor(
         agent=agent.agent,
         tools=agent.tools,
         memory=memory, 
         verbose=True,
-        handle_parsing_errors=True,
-        agent_kwargs={"input_variables": ["chat_history", "input"]}
+        handle_parsing_errors=True
     )
     
     return executor
@@ -384,33 +380,47 @@ if st.session_state.agent:
             st.markdown(pergunta)
         
         # 3. Executa o agente e desenha a resposta do assistente
-        with st.chat_message("assistant"):
-            with st.spinner("O Agente está pensando e analisando os dados..."):
-                output_buffer = io.StringIO()
-                sys.stdout = output_buffer
-                
-                try:
-                    # Executa o agente
-                    resposta = st.session_state.agent.invoke({"input": pergunta})
-                    sys.stdout = sys.__stdout__
-                    
-                    assistant_message_content = resposta['output']
-                    
-                    # Exibe a resposta final
-                    st.markdown(assistant_message_content) 
-                    st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
-                    
-                    # 4. RESTAURADO: Rastreio da Execução (Verbose)
-                    with st.expander("Rastreio da Execução (Verbose)"):
-                        st.code(output_buffer.getvalue(), language='log')
+       # 3. Executa o agente e desenha a resposta do assistente
+with st.chat_message("assistant"):
+    with st.spinner("O Agente está pensando e analisando os dados..."):
+        output_buffer = io.StringIO()
+        sys.stdout = output_buffer
+        
+        try:
+            # CARREGAMENTO MANUAL DO HISTÓRICO (CHAVE DA FIX)
+            chat_history = st.session_state.agent.memory.load_memory_variables({})["chat_history"]
+            
+            # Invoke com dict completo (inclui histórico e vars padrão)
+            input_dict = {
+                "input": pergunta,
+                "chat_history": chat_history,
+                "agent_scratchpad": "",  # Placeholder para ReAct
+                "df_head": st.session_state.df.head(3).to_json()  # Preview de dados para contexto
+            }
+            
+            resposta = st.session_state.agent.invoke(input_dict)
+            sys.stdout = sys.__stdout__
+            
+            assistant_message_content = resposta['output']
+            
+            # Exibe a resposta final
+            st.markdown(assistant_message_content)
+            
+            # Salvamento explícito no histórico (reforço)
+            st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
+            
+            # 4. Rastreio da Execução (Verbose)
+            with st.expander("Rastreio da Execução (Verbose)"):
+                st.code(output_buffer.getvalue(), language='log')
 
-                except Exception as e:
-                    sys.stdout = sys.__stdout__
-                    assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
-                    st.error(assistant_message_content)
+        except Exception as e:
+            sys.stdout = sys.__stdout__
+            assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
+            st.error(assistant_message_content)
+            st.session_state.agent.memory.save_context({"input": pergunta}, {"output": assistant_message_content})
 
-                # 5. Adiciona a resposta final (ou erro) ao histórico da sessão
-                st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
+        # 5. Adiciona ao histórico da sessão
+        st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
         
         # 6. Exibição de Gráfico Gerado
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
@@ -425,6 +435,7 @@ if st.session_state.agent:
 else:
     # 8. RESTAURADO: Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
