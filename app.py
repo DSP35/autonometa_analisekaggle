@@ -13,12 +13,10 @@ from ydata_profiling import ProfileReport
 
 # Importações LangChain/Gemini
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
-from langchain.memory import ConversationBufferWindowMemory # k=5 memory
+from langchain.memory import ConversationBufferWindowMemory 
 from langchain.agents import AgentExecutor # Para uso da memória
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.agents import create_tool_calling_agent 
-from langchain_experimental.tools.pandas import create_pandas_dataframe_tool 
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 
@@ -231,16 +229,28 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
-    # --- 1. FERRAMENTAS ---
-    # CORREÇÃO: Cria o objeto Tool de DataFrame usando a função estável
-    df_tool = create_pandas_dataframe_tool(df, llm=llm) 
-    
     tools = [
-        df_tool, # A ferramenta padrão de análise de DF
         otimizar_tipos_de_dados_para_memoria, 
         gerar_perfil_de_dados_e_salvar_html, 
         gerar_visualizacao 
     ]
+    
+    # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO ---
+    
+    # PREFIXO: Instruções sobre persona e regras
+    CUSTOM_PREFIX = """
+    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
+
+    **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
+    1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento, como 'e a média disso?'.
+    2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
+    """
+
+    # SUFIXO: Variável que a memória irá preencher.
+    # Esta é a forma mais estável de injetar histórico no Pandas Agent.
+    CUSTOM_SUFFIX = """
+    {chat_history}
+    """
     
     # --- 2. CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5) ---
     memory = ConversationBufferWindowMemory(
@@ -249,29 +259,29 @@ def create_agent(df: pd.DataFrame):
         return_messages=True
     )
     
-    # --- 3. PROMPT CUSTOMIZADO COM PLACEHOLDER DE MEMÓRIA ---
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         """Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
-
-            **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
-            1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento.
-            2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
-         """),
-        
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("user", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
+    # --- 3. CRIAÇÃO DO AGENTE (Usando o template customizado) ---
+    # Usamos o AgentExecutor com a memória e a ferramenta do pandas agent.
+    agent_framework = create_pandas_dataframe_agent(
+        llm,
+        df,
+        verbose=True,
+        agent_type="openai-tools", # O agent_type do Gemini mais estável
+        extra_tools=tools, 
+        handle_parsing_errors=True,
+        allow_dangerous_code=True,
+        # INJETAMOS O PREFIXO E SUFIXO
+        agent_kwargs={
+            "prefix": CUSTOM_PREFIX,
+            "suffix": CUSTOM_SUFFIX
+        } 
+    )
     
-    # --- 4. CRIAÇÃO DO AGENTE (Tool Calling Agent) ---
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    
-    # --- 5. EXECUÇÃO COM MEMÓRIA ---
+    # --- 4. EXECUÇÃO COM MEMÓRIA ---
+    # O AgentExecutor fará a mágica de injetar o {chat_history} no SUFFIX.
     executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        memory=memory,
+        agent=agent_framework.agent,
+        tools=agent_framework.tools,
+        memory=memory, 
         verbose=True,
         handle_parsing_errors=True,
     )
@@ -410,6 +420,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
