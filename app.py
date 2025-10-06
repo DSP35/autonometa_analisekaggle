@@ -219,7 +219,6 @@ def gerar_visualizacao(comando_grafico: str) -> str:
 # CÓDIGO FINAL E CORRIGIDO PARA CONTEXTO DE 10 E RESPOSTA AMIGÁVEL:
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
-@st.cache_resource(show_spinner="Inicializando o Agente de IA...")
 def create_agent(df: pd.DataFrame):
     """Inicializa o agente de análise de dados com Memória Conversacional limitada (k=10)."""
     
@@ -286,10 +285,7 @@ def create_agent(df: pd.DataFrame):
     return executor
 
 # --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
-if st.session_state.get('df') is None:
-    # LIMPA QUALQUER VERSÃO DE AGENTE CORROMPIDA NO CACHE
-    st.cache_resource.clear() 
-    
+
 st.set_page_config(layout="wide")
 
 st.title("🤖 Agente de Análise de Dados com Gemini")
@@ -420,6 +416,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
