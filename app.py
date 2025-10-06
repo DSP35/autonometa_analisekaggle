@@ -220,7 +220,6 @@ def gerar_visualizacao(comando_grafico: str) -> str:
     finally:
         plt.close()
 
-
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
 @st.cache_resource(show_spinner="Inicializando o Agente de IA...")
@@ -234,13 +233,15 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
-    # PREFIXO CUSTOMIZADO COM INJEÇÃO EXPLÍCITA DE HISTÓRICO
+    # --- NOVO PREFIXO CRÍTICO COM INSTRUÇÃO DE PERSONA ---
     CUSTOM_PREFIX = """
-    Você é um agente de ANÁLISE DE DADOS. Sua principal função é analisar o DataFrame pandas carregado e gerar visualizações, estatísticas ou perfis.
-    Siga as regras rigorosamente.
+    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é gerar visualizações e estatísticas.
 
-    O histórico de conversas anterior está disponível abaixo. Use-o para responder a perguntas de acompanhamento, como 'e a média disso?'.
-    HISTÓRICO:
+    **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
+    1. Você TEM acesso ao histórico recente da conversa, que está incluído abaixo. USE-O para responder perguntas de acompanhamento.
+    2. NUNCA diga que você não tem memória ou que cada interação é independente. Se perguntado sobre histórico ou sua natureza, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
+
+    HISTÓRICO RECENTE (Limitado a 5 interações):
     {chat_history}
     """
     
@@ -266,7 +267,7 @@ def create_agent(df: pd.DataFrame):
         extra_tools=tools, 
         handle_parsing_errors=True,
         allow_dangerous_code=True,
-        agent_kwargs={"prefix": CUSTOM_PREFIX} 
+        agent_kwargs={"prefix": CUSTOM_PREFIX} # O prefixo customizado é passado aqui
     )
     
     # 2. Envolve o agente em um AgentExecutor com Memória
@@ -413,3 +414,4 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
