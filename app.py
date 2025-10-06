@@ -19,6 +19,7 @@ from langchain.tools import tool
 from langchain.memory.buffer_window import ConversationBufferWindowMemory  # ✅ import atualizado
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory 
 from langchain.agents import AgentExecutor
+from langchain.schema import HumanMessage, AIMessage
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 try:
@@ -271,8 +272,15 @@ if st.session_state.df is not None:
             del st.session_state.profile_report_path
 
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    if isinstance(message, HumanMessage):
+        role = "user"
+    elif isinstance(message, AIMessage):
+        role = "assistant"
+    else:
+        role = "assistant"  # fallback
+
+    with st.chat_message(role):
+        st.markdown(message.content)
 
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
@@ -305,4 +313,5 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
