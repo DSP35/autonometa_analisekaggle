@@ -286,7 +286,10 @@ def create_agent(df: pd.DataFrame):
     return executor
 
 # --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
-
+if st.session_state.get('df') is None:
+    # LIMPA QUALQUER VERSÃO DE AGENTE CORROMPIDA NO CACHE
+    st.cache_resource.clear() 
+    
 st.set_page_config(layout="wide")
 
 st.title("🤖 Agente de Análise de Dados com Gemini")
@@ -417,6 +420,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
