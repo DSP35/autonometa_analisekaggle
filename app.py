@@ -233,25 +233,32 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
+    # --- FIX CRÍTICO: INJETAR O HISTÓRICO NO PREFIXO PARA FORÇAR O LLM A USÁ-LO ---
+    # Adicionamos {chat_history} e uma instrução clara.
     CUSTOM_PREFIX = """
     Você é um agente de ANÁLISE DE DADOS. Sua principal função é analisar o DataFrame pandas carregado e gerar visualizações, estatísticas ou perfis.
     Siga as regras rigorosamente.
-    """
 
+    O histórico de conversas anterior está disponível abaixo. Use-o para responder a perguntas de acompanhamento, como 'e a média disso?'.
+    HISTÓRICO:
+    {chat_history}
+    """
+    
     tools = [
         otimizar_tipos_de_dados_para_memoria, 
         gerar_perfil_de_dados_e_salvar_html, 
         gerar_visualizacao 
     ]
     
-    # --- CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5) ---
+    # CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5)
+    # A chave "chat_history" deve ser a mesma usada no prefixo.
     memory = ConversationBufferWindowMemory(
-        k=5, # Limita o contexto às últimas 5 trocas de mensagem
+        k=5, 
         memory_key="chat_history", 
         return_messages=True
     )
     
-    # 1. Cria o Agente base
+    # 1. Cria o Agente base (Agent Framework)
     agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
@@ -260,14 +267,15 @@ def create_agent(df: pd.DataFrame):
         extra_tools=tools, 
         handle_parsing_errors=True,
         allow_dangerous_code=True,
-        agent_kwargs={"prefix": CUSTOM_PREFIX}
+        # O prefixo customizado é passado aqui
+        agent_kwargs={"prefix": CUSTOM_PREFIX} 
     )
     
     # 2. Envolve o agente em um AgentExecutor com Memória
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
-        memory=memory, # O AgentExecutor usa este objeto de memória
+        memory=memory, 
         verbose=True,
         handle_parsing_errors=True,
     )
@@ -408,6 +416,7 @@ if st.session_state.agent:
 else:
     # 8. RESTAURADO: Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
