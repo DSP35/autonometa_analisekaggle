@@ -265,25 +265,23 @@ def create_agent(df: pd.DataFrame):
         llm,
         df,
         verbose=True,
-        agent_type="openai-tools", # O agent_type do Gemini mais estável
+        agent_type="openai-tools", 
         extra_tools=tools, 
-        handle_parsing_errors=True,
-        allow_dangerous_code=True,
-        # INJETAMOS O PREFIXO E SUFIXO
-        agent_kwargs={
-            "prefix": CUSTOM_PREFIX,
-            "suffix": CUSTOM_SUFFIX
-        } 
+        
+        # --- CORREÇÃO: Argumentos de personalização passados diretamente ---
+        # Removemos 'handle_parsing_errors' e o dicionário 'agent_kwargs'
+        prefix=CUSTOM_PREFIX,
+        suffix=CUSTOM_SUFFIX
+        # --- FIM DA CORREÇÃO ---
     )
     
-    # --- 4. EXECUÇÃO COM MEMÓRIA ---
-    # O AgentExecutor fará a mágica de injetar o {chat_history} no SUFFIX.
+    # 4. EXECUÇÃO COM MEMÓRIA (O restante permanece o mesmo)
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
         memory=memory, 
         verbose=True,
-        handle_parsing_errors=True,
+        handle_parsing_errors=True, # Note: Isso aqui ainda é suportado pelo AgentExecutor!
     )
     
     return executor
@@ -420,6 +418,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
