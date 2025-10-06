@@ -7,8 +7,9 @@ langchain
 langchain-experimental
 google-genai
 langchain-google-genai
-ydata-profiling==4.6.4
+ydata-profiling==4.17.0
 setuptools
 tabulate
+
 
 
