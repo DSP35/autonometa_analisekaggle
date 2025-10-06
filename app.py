@@ -108,7 +108,12 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
 
 @tool
 def gerar_visualizacao(comando_grafico: str) -> str:
-    """Gera um gráfico PNG a partir de um comando simples."""
+    """
+    Gera um gráfico PNG a partir de um comando simples.
+    O formato do comando deve ser: 'tipo_de_grafico(coluna_x, coluna_y)' ou 'coluna_x, tipo_de_grafico'.
+    Tipos suportados: hist, scatter, line, box, bar.
+    Exemplos: 'hist(Amount)', 'scatter(Preço, Quantidade)', 'Categoria, bar'.
+    """
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_plot = get_data_for_high_cost_tool(df)
@@ -297,3 +302,4 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
