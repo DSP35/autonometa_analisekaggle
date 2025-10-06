@@ -9,44 +9,41 @@ from pathlib import Path
 import io
 import sys
 import tempfile
+import traceback
 from ydata_profiling import ProfileReport
 
-# Importações LangChain/Gemini
+# --- LangChain / Gemini ---
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
-from langchain.memory.buffer_window import ConversationBufferWindowMemory
+from langchain.memory.buffer_window import ConversationBufferWindowMemory  # ✅ import atualizado
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory 
-from langchain.agents import AgentExecutor # Para uso da memória
+from langchain.agents import AgentExecutor
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
-
-# Tenta ler a chave do Streamlit Secrets
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 except KeyError:
     st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
     st.stop()
 
-# --- 2. VARIÁVEIS DE ESTADO E FUNÇÕES DE AJUDA ---
+# --- 2. ESTADO E FUNÇÕES AUXILIARES ---
 
-# Inicialização de estado de sessão
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'agent' not in st.session_state:
     st.session_state.agent = None
 if 'NOME_DO_ARQUIVO_REFERENCIA' not in st.session_state:
     st.session_state.NOME_DO_ARQUIVO_REFERENCIA = "Nenhum arquivo carregado"
-# O histórico é inicializado implicitamente pelo StreamlitChatMessageHistory (key="messages")
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 def get_data_for_high_cost_tool(df_global: pd.DataFrame, threshold: int = 100000) -> pd.DataFrame:
-    """Retorna o DataFrame principal ou uma amostra de 100k linhas se ele for muito grande."""
     if df_global.shape[0] > threshold:
         return df_global.sample(n=threshold, random_state=42).reset_index(drop=True)
     return df_global
 
 def parse_comando_grafico(comando: str) -> tuple:
-    """Extrai coluna_x, tipo_grafico e coluna_y de uma string de comando."""
     match = re.search(r'(\w+)\s*\(([^)]*)\)', comando.strip().lower())
     if match:
         tipo = match.group(1)
@@ -54,7 +51,6 @@ def parse_comando_grafico(comando: str) -> tuple:
         coluna_x = args[0] if len(args) > 0 else None
         coluna_y = args[1] if len(args) > 1 and args[1] != 'none' else None
         return tipo, coluna_x, coluna_y
-    
     parts = [p.strip().strip("'\"") for p in comando.split(',') if p.strip()]
     if len(parts) >= 2:
         return parts[1], parts[0], None
@@ -62,53 +58,34 @@ def parse_comando_grafico(comando: str) -> tuple:
         return 'hist', parts[0], None
     return None, None, None
 
-# --- 3. FERRAMENTAS DO AGENTE (@tool) ---
+# --- 3. FERRAMENTAS DO AGENTE ---
 
 @tool
 def otimizar_tipos_de_dados_para_memoria() -> str:
-    """
-    Otimiza os tipos de dados do DataFrame (downcasting de numéricos) para reduzir o consumo de memória.
-    Esta otimização é aplicada diretamente ao DataFrame principal.
-    :return: Relatório da economia de memória em MB e porcentagem.
-    """
     df = st.session_state.df
     if df is None: return "Erro: DataFrame não carregado."
-    
     initial_mem = df.memory_usage(deep=True).sum()
     df_optimized = df.copy()
-
     for col in df_optimized.columns:
         col_type = df_optimized[col].dtype
-        
         if np.issubdtype(col_type, np.integer):
             df_optimized[col] = pd.to_numeric(df_optimized[col], downcast='integer')
         elif np.issubdtype(col_type, np.floating):
             df_optimized[col] = pd.to_numeric(df_optimized[col], downcast='float')
-        
     final_mem = df_optimized.memory_usage(deep=True).sum()
-    mem_saved = (initial_mem - final_mem) / (1024**2) # MB
+    mem_saved = (initial_mem - final_mem) / (1024**2)
     percentage_saved = (initial_mem - final_mem) / initial_mem * 100
-
     if percentage_saved > 0.1:
         st.session_state.df = df_optimized
-        return f"Sucesso: Tipos de dados otimizados. Memória economizada: {mem_saved:.2f} MB ({percentage_saved:.2f}%). Otimização aplicada ao DataFrame principal (df)."
+        return f"Sucesso: Tipos de dados otimizados. Memória economizada: {mem_saved:.2f} MB ({percentage_saved:.2f}%)."
     else:
-        return f"Aviso: Otimização de tipos de dados não foi significativa. Memória economizada: {mem_saved:.2f} MB."
-
+        return f"Aviso: Otimização não significativa. Memória economizada: {mem_saved:.2f} MB."
 
 @tool
 def gerar_perfil_de_dados_e_salvar_html() -> str:
-    """
-    Gera um relatório HTML de perfil de dados (ydata-profiling). Otimiza o uso de memória 
-    usando uma amostra interna se o DataFrame principal for muito grande.
-    O relatório é salvo em um arquivo temporário e anexado ao Streamlit.
-    :return: Confirmação do arquivo salvo e instrução para o usuário baixar.
-    """
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
-    
     data_to_profile = get_data_for_high_cost_tool(df)
-
     try:
         profile = ProfileReport(
             data_to_profile,
@@ -117,65 +94,44 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
             sort=None,
             lazy=True
         )
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
             profile.to_file(tmp_file.name)
             output_file_path = tmp_file.name
-
         st.session_state.profile_report_path = output_file_path
-        
-        return f"Sucesso: Relatório de perfil de dados (baseado em {data_to_profile.shape[0]} linhas) gerado. O usuário pode baixar o arquivo HTML."
-
+        return f"Sucesso: Relatório de perfil de dados gerado ({data_to_profile.shape[0]} linhas)."
     except Exception as e:
         return f"Erro CRÍTICO ao gerar o perfil de dados. Detalhe: {e}"
 
-
 @tool
 def gerar_visualizacao(comando_grafico: str) -> str:
-    """
-    Gera um gráfico PNG baseado em um comando simples. Tipos suportados: 'hist', 'scatter', 'box', 'bar', 'line'.
-    Exemplos: 'line(Time, Amount)', 'hist(Amount)'.
-    :param comando_grafico: Comando do gráfico no formato 'tipo(coluna_x, coluna_y)'.
-    :return: Confirmação e o caminho do arquivo PNG gerado.
-    """
     df = st.session_state.df
-    if df is None: return "Erro: O DataFrame não está carregado. Não é possível gerar o gráfico."
-    
+    if df is None: return "Erro: O DataFrame não está carregado."
     data_to_plot = get_data_for_high_cost_tool(df)
-
     tipo_grafico, coluna_x, coluna_y = parse_comando_grafico(comando_grafico)
-    
-    if not coluna_x or not tipo_grafico: return "Erro de Parsing: Comando inválido. Use o formato 'tipo(coluna_x, coluna_y)'. Ex: line(Time, Amount)."
-    
+    if not coluna_x or not tipo_grafico: return "Erro de Parsing: Comando inválido."
     coluna_x_original = coluna_x
-    
     colunas_df = {col.lower(): col for col in data_to_plot.columns}
-    
     if coluna_x.lower() in colunas_df:
         coluna_x = colunas_df[coluna_x.lower()]
     else:
-        return f"Erro: A coluna '{coluna_x_original}' não existe no DataFrame."
-        
+        return f"Erro: A coluna '{coluna_x_original}' não existe."
     if coluna_y and coluna_y.lower() in colunas_df:
         coluna_y = colunas_df[coluna_y.lower()]
     elif coluna_y:
-        return f"Erro: A coluna Y '{coluna_y}' não existe no DataFrame."
-
+        return f"Erro: A coluna Y '{coluna_y}' não existe."
     plt.figure(figsize=(12, 7))
     buffer = io.BytesIO()
-    
     try:
         base_title = f" (Amostra de {data_to_plot.shape[0]} linhas)" if data_to_plot.shape[0] != df.shape[0] else ""
-
         if tipo_grafico == 'hist':
             sns.histplot(data_to_plot[coluna_x].dropna(), kde=True)
             plt.title(f'Distribuição de {coluna_x}{base_title}')
         elif tipo_grafico == 'scatter':
-            if not coluna_y: return "Erro: O tipo 'scatter' requer duas colunas (X e Y)."
+            if not coluna_y: return "Erro: Scatter requer duas colunas."
             sns.scatterplot(x=data_to_plot[coluna_x], y=data_to_plot[coluna_y])
-            plt.title(f'Dispersão entre {coluna_x} e {coluna_y}{base_title}')
-        elif tipo_grafico == 'line': 
-            if not coluna_y: return "Erro: O tipo 'line' requer duas colunas (X e Y)."
+            plt.title(f'Dispersão {coluna_x} vs {coluna_y}{base_title}')
+        elif tipo_grafico == 'line':
+            if not coluna_y: return "Erro: Line requer duas colunas."
             sns.lineplot(x=data_to_plot[coluna_x], y=data_to_plot[coluna_y])
             plt.title(f'Evolução de {coluna_y} por {coluna_x}{base_title}')
         elif tipo_grafico == 'box':
@@ -186,168 +142,117 @@ def gerar_visualizacao(comando_grafico: str) -> str:
                     plt.xticks(rotation=45, ha='right')
             else:
                 sns.boxplot(y=data_to_plot[coluna_x])
-            plt.title(f'Boxplot de {coluna_x} vs {coluna_y or "Geral"}{base_title}')
+            plt.title(f'Boxplot de {coluna_x}{base_title}')
             plt.ylabel(coluna_x)
         elif tipo_grafico == 'bar':
             unique_count = data_to_plot[coluna_x].nunique()
-            if unique_count > 50: return f"Erro: A coluna '{coluna_x}' tem muitas categorias ({unique_count}) para um gráfico de barras. Sugestão: tente 'hist'."
-            
+            if unique_count > 50:
+                return f"Erro: Muitas categorias ({unique_count}) para gráfico de barras."
             sns.countplot(x=data_to_plot[coluna_x], order=data_to_plot[coluna_x].value_counts().index)
             plt.title(f'Contagem de {coluna_x}{base_title}')
             plt.xlabel(coluna_x)
             plt.ylabel('Contagem')
-            
             if unique_count > 10:
                 plt.xticks(rotation=45, ha='right')
-            
         else:
-            return f"Erro: Tipo de gráfico '{tipo_grafico}' não suportado. Use 'hist', 'scatter', 'box', 'bar' ou 'line'."
-
+            return f"Erro: Tipo '{tipo_grafico}' não suportado."
         plt.tight_layout()
         plt.savefig(buffer, format='png')
         plt.close()
-
         st.session_state.graph_buffer = buffer.getvalue()
         st.session_state.graph_filename = f"grafico_{tipo_grafico}_{coluna_x}.png"
-        
-        return f"Sucesso: Gráfico '{tipo_grafico}' gerado. O Streamlit irá exibi-lo abaixo."
-
+        return f"Sucesso: Gráfico '{tipo_grafico}' gerado."
     except Exception as e:
         plt.close()
-        return f"Erro inesperado ao gerar o gráfico. Detalhe: {e}"
+        return f"Erro inesperado ao gerar gráfico: {e}"
     finally:
         plt.close()
 
-# --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
+# --- 4. CRIAÇÃO DO AGENTE ---
 
 def create_agent(df: pd.DataFrame):
-    """Inicializa o agente de análise de dados com Memória Conversacional limitada (k=10)."""
-    
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
-        temperature=0, 
+        temperature=0,
         max_tokens=2048,
         api_key=GEMINI_API_KEY
     )
-    
-    tools = [
-        otimizar_tipos_de_dados_para_memoria, 
-        gerar_perfil_de_dados_e_salvar_html, 
-        gerar_visualizacao 
-    ]
-    
-    # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO ---
-    
+    tools = [otimizar_tipos_de_dados_para_memoria, gerar_perfil_de_dados_e_salvar_html, gerar_visualizacao]
+
     CUSTOM_PREFIX = """
-    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
-
-    **INSTRUÇÃO CRÍTICA SOBRE CAPACIDADES:**
-    Quando o usuário perguntar 'O que você pode fazer?', 'Quais são suas capacidades?' ou similar, você DEVE responder com uma lista amigável e de alto nível, EVITANDO EXPOR NOMES DE FERRAMENTAS (como 'otimizar_tipos_de_dados_para_memoria') ou SINTAXE DE CÓDIGO (como 'default_api.tool_name' ou 'python_repl_ast').
-    Exemplo de resposta amigável: 'Eu posso gerar relatórios de perfil de dados, otimizar o uso de memória do arquivo e criar diversos tipos de gráficos.'
-
-    **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
-    1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento, como 'e a média disso?'.
-    2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
+    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido.
     """
+    CUSTOM_SUFFIX = ""  # ✅ vazio, sem placeholders problemáticos
 
-    CUSTOM_SUFFIX = """
-    {conversation_history}
-    """
-    
-    # --- 2. CONFIGURAÇÃO DE MEMÓRIA (O Segredo da Estabilidade) ---
-    
-    # 2a. O histórico real que usa o st.session_state.messages (CORRIGE O CONFLITO)
     history = StreamlitChatMessageHistory(key="messages")
-    
-    # 2b. O objeto de memória que usa o histórico acima e TRUNCA a janela para 10
+
     memory = ConversationBufferWindowMemory(
-        k=10, 
+        k=10,
         chat_memory=history,
         memory_key="conversation_history",
         return_messages=True
     )
-    
-    # --- 3. CRIAÇÃO DO AGENTE (MANTIDO) ---
+
     agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
-        agent_type="openai-tools", 
-        extra_tools=tools, 
+        agent_type="openai-tools",
+        extra_tools=tools,
         allow_dangerous_code=True,
-        # INJETAMOS O PREFIXO E SUFIXO
         prefix=CUSTOM_PREFIX,
         suffix=CUSTOM_SUFFIX
     )
-    
-    # --- 4. EXECUÇÃO COM MEMÓRIA ---
+
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
-        memory=memory, 
+        memory=memory,
         verbose=True,
         handle_parsing_errors=True,
     )
-    
+
     return executor
 
-# --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
+# --- 5. INTERFACE STREAMLIT ---
 
 st.set_page_config(layout="wide")
-
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
-# Inicialização do Histórico de Chat e Flags de Estado
-# O histórico de mensagens é a única fonte de verdade para o chat.
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-
-# Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
-# Lógica de carregamento e inicialização do agente
 if uploaded_file is not None and (st.session_state.df is None or st.session_state.NOME_DO_ARQUIVO_REFERENCIA != uploaded_file.name):
-    
-    # Redefine o estado ao carregar um NOVO arquivo
-    st.session_state.messages = [] 
-    
+    st.session_state.messages = []
     with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
-            content = uploaded_file.getvalue().decode('utf-8-sig')
-            df = pd.read_csv(io.StringIO(content), sep=None, engine='python')  # detecta separador automaticamente
-            
+            content_bytes = uploaded_file.getvalue()
+            try:
+                content = content_bytes.decode('utf-8-sig')
+            except Exception:
+                content = content_bytes.decode('latin1')
+            df = pd.read_csv(io.StringIO(content), sep=None, engine='python')
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
-            
             st.session_state.agent = create_agent(df)
             st.success(f"Arquivo '{uploaded_file.name}' carregado com sucesso. Agente pronto!")
-
-            
         except Exception as e:
-            st.error(f"Erro ao ler o arquivo CSV: {e}")
+            st.error(f"Erro ao ler o arquivo CSV ou inicializar o agente: {e}")
+            st.error(traceback.format_exc())
             st.session_state.df = None
 
-
-# --- Bloco de Controle de Mensagem Inicial ---
 if st.session_state.agent is not None and not st.session_state.messages:
-    
-    st.session_state.messages.append({"role": "assistant", "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` com {st.session_state.df.shape[0]} linhas foi carregado com sucesso. Como posso ajudar na análise?"})
-    
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` foi carregado com sucesso ({st.session_state.df.shape[0]} linhas). Como posso ajudar?"
+    })
 
-# --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
     st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
-    st.sidebar.markdown("**Amostragem de dados:**")
     st.sidebar.dataframe(st.session_state.df.head(5))
-    
     col1, col2 = st.columns([1, 2])
-    
     with col1:
         st.metric(label="Linhas", value=st.session_state.df.shape[0])
         st.metric(label="Colunas", value=st.session_state.df.shape[1])
-        
-        # Botões de download do relatório de perfil (com limpeza)
         if 'profile_report_path' in st.session_state:
             with open(st.session_state.profile_report_path, "rb") as file:
                 st.download_button(
@@ -362,66 +267,38 @@ if st.session_state.df is not None:
                 pass
             del st.session_state.profile_report_path
 
-
-# --- Exibição do Histórico de Chat (Loop Principal) ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"]) 
+        st.markdown(message["content"])
 
-
-# --- Campo de Entrada de Chat Fixo na Parte Inferior ---
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
-    
     if pergunta:
-        # 1. Adiciona a pergunta do usuário ao histórico (para o próximo refresh)
         st.session_state.messages.append({"role": "user", "content": pergunta})
-
-        # 2. DESENHA A MENSAGEM DO USUÁRIO IMEDIATAMENTE (Visual Fix)
         with st.chat_message("user"):
             st.markdown(pergunta)
-        
-        # 3. Executa o agente e desenha a resposta do assistente
         with st.chat_message("assistant"):
-            with st.spinner("O Agente está pensando e analisando os dados..."):
+            with st.spinner("O Agente está pensando..."):
                 output_buffer = io.StringIO()
                 sys.stdout = output_buffer
-                
                 try:
-                    # Executa o agente
                     resposta = st.session_state.agent.invoke({"input": pergunta})
                     sys.stdout = sys.__stdout__
-                    
                     assistant_message_content = resposta['output']
-                    
-                    # Exibe a resposta final
-                    st.markdown(assistant_message_content) 
-                    
-                    # 4. Rastreio da Execução (Verbose)
+                    st.markdown(assistant_message_content)
                     with st.expander("Rastreio da Execução (Verbose)"):
                         st.code(output_buffer.getvalue(), language='log')
-
                 except Exception as e:
                     sys.stdout = sys.__stdout__
-                    assistant_message_content = f"❌ Erro na execução do Agente. Detalhe: {e}"
+                    assistant_message_content = f"❌ Erro na execução do Agente: {e}"
                     st.error(assistant_message_content)
-
-                # 5. Adiciona a resposta final (ou erro) ao histórico da sessão
                 st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
-        
-        # 6. Exibição de Gráfico Gerado
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
             del st.session_state.graph_buffer
-            del st.session_state.graph_filename # Limpeza completa
-        
-        # 7. FORÇA O REDRAW COMPLETO para sincronizar o histórico
-        st.rerun() 
-
+            del st.session_state.graph_filename
+        st.rerun()
 else:
-    # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
-
