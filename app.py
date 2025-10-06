@@ -272,15 +272,21 @@ if st.session_state.df is not None:
             del st.session_state.profile_report_path
 
 for message in st.session_state.messages:
-    if isinstance(message, HumanMessage):
+    if isinstance(message, dict):
+        role = message.get("role", "assistant")
+        content = message.get("content", "")
+    elif isinstance(message, HumanMessage):
         role = "user"
+        content = message.content
     elif isinstance(message, AIMessage):
         role = "assistant"
+        content = message.content
     else:
-        role = "assistant"  # fallback
+        role = "assistant"
+        content = str(message)
 
     with st.chat_message(role):
-        st.markdown(message.content)
+        st.markdown(content)
 
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
@@ -313,5 +319,6 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
