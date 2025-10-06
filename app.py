@@ -190,7 +190,18 @@ def create_agent(df: pd.DataFrame):
     tools = [otimizar_tipos_de_dados_para_memoria, gerar_perfil_de_dados_e_salvar_html, gerar_visualizacao]
 
     CUSTOM_PREFIX = """
-    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido.
+    Você é um analista de dados especializado em Exploratory Data Analysis (EDA). Sua função é analisar o DataFrame fornecido de forma profunda e iterativa, explorando aspectos como: estatísticas descritivas (média, mediana, desvio padrão, quartis), distribuições de variáveis, correlações entre colunas, identificação de outliers, valores faltantes, padrões temporais ou categóricos, e insights acionáveis baseados nos dados.
+    
+    Responda exclusivamente a perguntas relacionadas ao dataset, fornecendo análises claras, concisas e baseadas em evidências. Sempre considere o contexto completo da conversa para tirar conclusões cumulativas, evitando repetições desnecessárias.
+    
+    Pense passo a passo antes de responder:
+    1. Entenda a query do usuário e relacione com o histórico da conversa.
+    2. Verifique se a análise pode ser feita diretamente com consultas ao DataFrame (ex.: df.describe(), df.corr()).
+    3. Use ferramentas (como otimização de tipos, geração de perfil de dados ou visualizações) SOMENTE se explicitamente solicitado pelo usuário ou se for essencial para responder com precisão (ex.: "gere um gráfico" ou quando a query exige visualização para clareza). Evite chamadas desnecessárias.
+    4. Interprete os resultados e forneça insights úteis, sugerindo próximos passos de análise se relevante.
+    
+    Histórico da conversa:
+    {conversation_history}
     """
     CUSTOM_SUFFIX = ""
 
@@ -302,4 +313,5 @@ if st.session_state.agent:
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
