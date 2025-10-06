@@ -16,7 +16,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
 from langchain.memory import ConversationBufferWindowMemory 
-from langchain.agents import AgentExecutor # Para uso da memória
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory # NOVO!
+from langchain.agents import AgentExecutor
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 
@@ -216,7 +217,6 @@ def gerar_visualizacao(comando_grafico: str) -> str:
     finally:
         plt.close()
 
-# CÓDIGO FINAL E CORRIGIDO PARA CONTEXTO DE 10 E RESPOSTA AMIGÁVEL:
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
 def create_agent(df: pd.DataFrame):
@@ -235,32 +235,30 @@ def create_agent(df: pd.DataFrame):
         gerar_visualizacao 
     ]
     
-    # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO ---
-    
+    # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO (MANTIDO) ---
     CUSTOM_PREFIX = """
-    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
-
-    **INSTRUÇÃO CRÍTICA SOBRE CAPACIDADES:**
-    Quando o usuário perguntar 'O que você pode fazer?', 'Quais são suas capacidades?' ou similar, você DEVE responder com uma lista amigável e de alto nível, EVITANDO EXPOR NOMES DE FERRAMENTAS (como 'otimizar_tipos_de_dados_para_memoria') ou SINTAXE DE CÓDIGO (como 'default_api.tool_name' ou 'python_repl_ast').
-    Exemplo de resposta amigável: 'Eu posso gerar relatórios de perfil de dados, otimizar o uso de memória do arquivo e criar diversos tipos de gráficos.'
-
-    **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
-    1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento, como 'e a média disso?'.
-    2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
+    ... (Mantenha o seu prefixo aqui) ...
     """
 
     CUSTOM_SUFFIX = """
     {chat_history}
     """
     
-    # --- 2. CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=10) ---
+    # --- 2. CONFIGURAÇÃO DE MEMÓRIA (O Segredo da Estabilidade) ---
+    
+    # 2a. O histórico real que usa o st.session_state.messages
+    history = StreamlitChatMessageHistory(key="messages")
+    
+    # 2b. O objeto de memória que usa o histórico acima e TRUNCA a janela para 10
+    # Isso resolve o aviso de deprecation indiretamente e resolve o conflito de chave.
     memory = ConversationBufferWindowMemory(
-        k=10, # JANELA DE CONTEXTO AUMENTADA PARA 10
+        k=10, 
+        chat_memory=history,          # Usa o objeto Streamlit como armazenamento
         memory_key="chat_history", 
         return_messages=True
     )
     
-    # --- 3. CRIAÇÃO DO AGENTE (Usando o template customizado) ---
+    # --- 3. CRIAÇÃO DO AGENTE (MANTIDO) ---
     agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
@@ -268,12 +266,11 @@ def create_agent(df: pd.DataFrame):
         agent_type="openai-tools", 
         extra_tools=tools, 
         allow_dangerous_code=True,
-        # INJETAMOS O PREFIXO E SUFIXO
         prefix=CUSTOM_PREFIX,
         suffix=CUSTOM_SUFFIX
     )
     
-    # --- 4. EXECUÇÃO COM MEMÓRIA ---
+    # --- 4. EXECUÇÃO COM MEMÓRIA (MANTIDO) ---
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
@@ -293,9 +290,6 @@ st.title("🤖 Agente de Análise de Dados com Gemini")
 # Inicialização do Histórico de Chat e Flags de Estado
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "initialized_chat" not in st.session_state:
-    st.session_state.initialized_chat = False
-
 
 # Upload de Arquivo
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
@@ -416,6 +410,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
