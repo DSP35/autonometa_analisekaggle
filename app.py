@@ -276,8 +276,11 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
 # --- Bloco Lateral (Sidebar) ---
 if st.session_state.df is not None:
     st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
-    st.sidebar.metric(label="Linhas", value=st.session_state.df.shape[0])
-    st.sidebar.metric(label="Colunas", value=st.session_state.df.shape[1])
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric(label="Linhas", value=st.session_state.df.shape[0])
+    with col2:
+        st.metric(label="Colunas", value=st.session_state.df.shape[1])
     st.sidebar.markdown("**Amostragem de dados:**")
     st.sidebar.dataframe(st.session_state.df.head(5))
     
@@ -371,6 +374,7 @@ if st.session_state.agent:
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
