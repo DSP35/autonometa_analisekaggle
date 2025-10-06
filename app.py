@@ -17,7 +17,9 @@ from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe
 from langchain.tools import tool
 from langchain.memory import ConversationBufferWindowMemory # k=5 memory
 from langchain.agents import AgentExecutor # Para uso da memória
-
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_tool_calling_agent 
+from langchain_community.tools.dataframe import create_dataframe_agent 
 
 # --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 
@@ -233,54 +235,56 @@ def create_agent(df: pd.DataFrame):
         api_key=GEMINI_API_KEY
     )
     
-    # --- NOVO PREFIXO CRÍTICO COM INSTRUÇÃO DE PERSONA ---
-    CUSTOM_PREFIX = """
-    Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é gerar visualizações e estatísticas.
-
-    **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
-    1. Você TEM acesso ao histórico recente da conversa, que está incluído abaixo. USE-O para responder perguntas de acompanhamento.
-    2. NUNCA diga que você não tem memória ou que cada interação é independente. Se perguntado sobre histórico ou sua natureza, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
-
-    HISTÓRICO RECENTE (Limitado a 5 interações):
-    {chat_history}
-    """
+    # --- 1. FERRAMENTAS ---
+    # Usamos o DF como uma ferramenta separada, em vez de depender do create_pandas_dataframe_agent
+    df_tool = create_dataframe_agent(llm, df, verbose=False).tools[0]
     
     tools = [
+        df_tool, # A ferramenta padrão de análise de DF
         otimizar_tipos_de_dados_para_memoria, 
         gerar_perfil_de_dados_e_salvar_html, 
         gerar_visualizacao 
     ]
     
-    # CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5)
+    # --- 2. CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5) ---
     memory = ConversationBufferWindowMemory(
         k=5, 
-        memory_key="chat_history", # Deve ser a mesma chave usada no PREFIXO
+        memory_key="chat_history", # A chave de memória
         return_messages=True
     )
     
-    # 1. Cria o Agente base
-    agent_framework = create_pandas_dataframe_agent(
-        llm,
-        df,
-        verbose=True,
-        agent_type="openai-tools",
-        extra_tools=tools, 
-        handle_parsing_errors=True,
-        allow_dangerous_code=True,
-        agent_kwargs={"prefix": CUSTOM_PREFIX} # O prefixo customizado é passado aqui
-    )
+    # --- 3. PROMPT CUSTOMIZADO COM PLACEHOLDER DE MEMÓRIA ---
+    # Usamos MessagesPlaceholder para injetar o histórico de forma nativa no prompt
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", 
+         """Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
+
+            **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
+            1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento.
+            2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
+         """),
+        
+        MessagesPlaceholder(variable_name="chat_history"), # O placeholder da memória
+        ("user", "{input}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
+    ])
     
-    # 2. Envolve o agente em um AgentExecutor com Memória
+    # --- 4. CRIAÇÃO DO AGENTE (Conversational Agent) ---
+    # Cria o agente usando o prompt customizado e as ferramentas
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    
+    # --- 5. EXECUÇÃO COM MEMÓRIA ---
+    # O AgentExecutor é responsável por pegar a memória e injetar no placeholder
     executor = AgentExecutor(
-        agent=agent_framework.agent,
-        tools=agent_framework.tools,
-        memory=memory, 
+        agent=agent,
+        tools=tools,
+        memory=memory, # O AgentExecutor usa este objeto de memória
         verbose=True,
         handle_parsing_errors=True,
+        # O histórico de memória é automaticamente injetado no 'chat_history'
     )
     
     return executor
-
 
 # --- 5. INTERFACE STREAMLIT PRINCIPAL (main) ---
 
@@ -414,4 +418,5 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
