@@ -216,11 +216,12 @@ def gerar_visualizacao(comando_grafico: str) -> str:
     finally:
         plt.close()
 
+# CÓDIGO FINAL E CORRIGIDO PARA CONTEXTO DE 10 E RESPOSTA AMIGÁVEL:
 # --- 4. FUNÇÃO DE CRIAÇÃO DO AGENTE ---
 
 @st.cache_resource(show_spinner="Inicializando o Agente de IA...")
 def create_agent(df: pd.DataFrame):
-    """Inicializa o agente de análise de dados com Memória Conversacional limitada (k=5)."""
+    """Inicializa o agente de análise de dados com Memória Conversacional limitada (k=10)."""
     
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -237,51 +238,49 @@ def create_agent(df: pd.DataFrame):
     
     # --- 1. DEFINIÇÃO DO PREFIXO/SUFIXO ---
     
-    # PREFIXO: Instruções sobre persona e regras
     CUSTOM_PREFIX = """
     Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido. Sua principal função é analisar o DataFrame e usar as ferramentas disponíveis para gerar visualizações e estatísticas.
+
+    **INSTRUÇÃO CRÍTICA SOBRE CAPACIDADES:**
+    Quando o usuário perguntar 'O que você pode fazer?', 'Quais são suas capacidades?' ou similar, você DEVE responder com uma lista amigável e de alto nível, EVITANDO EXPOR NOMES DE FERRAMENTAS (como 'otimizar_tipos_de_dados_para_memoria') ou SINTAXE DE CÓDIGO (como 'default_api.tool_name' ou 'python_repl_ast').
+    Exemplo de resposta amigável: 'Eu posso gerar relatórios de perfil de dados, otimizar o uso de memória do arquivo e criar diversos tipos de gráficos.'
 
     **INSTRUÇÃO CRÍTICA SOBRE MEMÓRIA:**
     1. Você TEM acesso ao histórico recente. USE-O para responder perguntas de acompanhamento, como 'e a média disso?'.
     2. NUNCA diga que você não tem memória. Se perguntado sobre histórico, responda: 'Sim, eu uso o histórico recente para a análise de dados.'
     """
 
-    # SUFIXO: Variável que a memória irá preencher.
-    # Esta é a forma mais estável de injetar histórico no Pandas Agent.
     CUSTOM_SUFFIX = """
     {chat_history}
     """
     
-    # --- 2. CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=5) ---
+    # --- 2. CONFIGURAÇÃO DE MEMÓRIA (Window Memory k=10) ---
     memory = ConversationBufferWindowMemory(
-        k=5, 
+        k=10, # JANELA DE CONTEXTO AUMENTADA PARA 10
         memory_key="chat_history", 
         return_messages=True
     )
     
     # --- 3. CRIAÇÃO DO AGENTE (Usando o template customizado) ---
-    # Usamos o AgentExecutor com a memória e a ferramenta do pandas agent.
     agent_framework = create_pandas_dataframe_agent(
         llm,
         df,
         verbose=True,
         agent_type="openai-tools", 
         extra_tools=tools, 
-        
-        # --- CORREÇÃO: Argumentos de personalização passados diretamente ---
-        # Removemos 'handle_parsing_errors' e o dicionário 'agent_kwargs'
+        allow_dangerous_code=True,
+        # INJETAMOS O PREFIXO E SUFIXO
         prefix=CUSTOM_PREFIX,
         suffix=CUSTOM_SUFFIX
-        # --- FIM DA CORREÇÃO ---
     )
     
-    # 4. EXECUÇÃO COM MEMÓRIA (O restante permanece o mesmo)
+    # --- 4. EXECUÇÃO COM MEMÓRIA ---
     executor = AgentExecutor(
         agent=agent_framework.agent,
         tools=agent_framework.tools,
         memory=memory, 
         verbose=True,
-        handle_parsing_errors=True, # Note: Isso aqui ainda é suportado pelo AgentExecutor!
+        handle_parsing_errors=True,
     )
     
     return executor
@@ -418,6 +417,7 @@ if st.session_state.agent:
 else:
     # 8. Mensagem de instrução inicial
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
 
