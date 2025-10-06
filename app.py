@@ -16,8 +16,8 @@ from ydata_profiling import ProfileReport
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
-from langchain.memory.buffer_window import ConversationBufferWindowMemory  # ✅ import atualizado
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory 
+from langchain.memory.buffer_window import ConversationBufferWindowMemory
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain.agents import AgentExecutor
 from langchain.schema import HumanMessage, AIMessage
 
@@ -65,7 +65,8 @@ def parse_comando_grafico(comando: str) -> tuple:
 def otimizar_tipos_de_dados_para_memoria() -> str:
     """Otimiza os tipos de dados numéricos do DataFrame para reduzir uso de memória."""
     df = st.session_state.df
-    if df is None: return "Erro: DataFrame não carregado."
+    if df is None:
+        return "Erro: DataFrame não carregado."
     initial_mem = df.memory_usage(deep=True).sum()
     df_optimized = df.copy()
     for col in df_optimized.columns:
@@ -85,7 +86,7 @@ def otimizar_tipos_de_dados_para_memoria() -> str:
 
 @tool
 def gerar_perfil_de_dados_e_salvar_html() -> str:
-    """Gera o perfil de dados em HTML."""
+    """Gera um relatório HTML de perfil de dados (ydata-profiling)."""
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_profile = get_data_for_high_cost_tool(df)
@@ -107,7 +108,7 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
 
 @tool
 def gerar_visualizacao(comando_grafico: str) -> str:
-    """Gera um gráfico para análise dos dados."""
+    """Gera um gráfico PNG a partir de um comando simples."""
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_plot = get_data_for_high_cost_tool(df)
@@ -186,7 +187,7 @@ def create_agent(df: pd.DataFrame):
     CUSTOM_PREFIX = """
     Você é um agente de ANÁLISE DE DADOS focado exclusivamente em responder a perguntas sobre o DataFrame fornecido.
     """
-    CUSTOM_SUFFIX = ""  # ✅ vazio, sem placeholders problemáticos
+    CUSTOM_SUFFIX = ""
 
     history = StreamlitChatMessageHistory(key="messages")
 
@@ -244,32 +245,7 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.error(traceback.format_exc())
             st.session_state.df = None
 
-if st.session_state.agent is not None and not st.session_state.messages:
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": f"Olá! Sou o Agente de Análise de Dados. O arquivo `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}` foi carregado com sucesso ({st.session_state.df.shape[0]} linhas). Como posso ajudar?"
-    })
-
-if st.session_state.df is not None:
-    st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
-    st.sidebar.dataframe(st.session_state.df.head(5))
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.metric(label="Linhas", value=st.session_state.df.shape[0])
-        st.metric(label="Colunas", value=st.session_state.df.shape[1])
-        if 'profile_report_path' in st.session_state:
-            with open(st.session_state.profile_report_path, "rb") as file:
-                st.download_button(
-                    label="📥 Baixar Relatório de Perfil (.html)",
-                    data=file,
-                    file_name="relatorio_perfil.html",
-                    mime="text/html"
-                )
-            try:
-                os.remove(st.session_state.profile_report_path)
-            except OSError:
-                pass
-            del st.session_state.profile_report_path
+# --- HISTÓRICO DE MENSAGENS (suporta dict e HumanMessage/AIMessage) ---
 
 for message in st.session_state.messages:
     if isinstance(message, dict):
@@ -288,10 +264,11 @@ for message in st.session_state.messages:
     with st.chat_message(role):
         st.markdown(content)
 
+# --- BLOCO DE CHAT ---
+
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
     if pergunta:
-        st.session_state.messages.append({"role": "user", "content": pergunta})
         with st.chat_message("user"):
             st.markdown(pergunta)
         with st.chat_message("assistant"):
@@ -309,16 +286,14 @@ if st.session_state.agent:
                     sys.stdout = sys.__stdout__
                     assistant_message_content = f"❌ Erro na execução do Agente: {e}"
                     st.error(assistant_message_content)
-                st.session_state.messages.append({"role": "assistant", "content": assistant_message_content})
+
         if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
             st.markdown("---")
             st.subheader("Gráfico Gerado")
             st.image(st.session_state.graph_buffer, caption=st.session_state.graph_filename)
             del st.session_state.graph_buffer
             del st.session_state.graph_filename
+
         st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
-
-
