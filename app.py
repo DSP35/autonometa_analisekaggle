@@ -256,16 +256,7 @@ Histórico da conversa:
 # --- Interface do Streamlit ---
 
 st.set_page_config(layout="wide")
-st.title("🤖 Agente de Análise de Dados com Gemini")
-
-st.sidebar.markdown(
-    """
-    <div style="text-align: center;">
-        <img src="https://i.imgur.com/oH1wbZ4.png" width="150">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+st.title("Agente de Análise Exploratória de Dados")
 
 uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
@@ -342,13 +333,13 @@ if st.session_state.dataframe is not None:
         del st.session_state.caminho_relatorio_perfil
 
 if st.session_state.agente:
-    consulta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
+    consulta = st.chat_input("Digite sua pergunta")
     if consulta:
         with st.chat_message("user"):
             st.markdown(consulta)
         
         with st.chat_message("assistant"):
-            with st.spinner("O Agente está pensando..."):
+            with st.spinner("Pensando ⌛..."):
                 captura_log = io.StringIO()
                 sys.stdout = captura_log
                 try:
@@ -392,4 +383,5 @@ if st.session_state.agente:
                     
                     logging.error(msg_erro)
 else:
-    st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+    st.warning("Por favor, carregue um arquivo CSV na barra lateral.")
+
