@@ -347,6 +347,10 @@ if st.session_state.df is not None:
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
     if pergunta:
+        if 'graph_buffer' in st.session_state:
+            del st.session_state.graph_buffer
+        if 'graph_filename' in st.session_state:
+            del st.session_state.graph_filename
         with st.chat_message("user"):
             st.markdown(pergunta)
         
@@ -393,4 +397,5 @@ if st.session_state.agent:
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
