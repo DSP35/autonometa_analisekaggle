@@ -370,10 +370,14 @@ if st.session_state.agent:
                         del st.session_state.graph_buffer
                         del st.session_state.graph_filename
 
-                    st.markdown(assistant_message_content)
+                        st.download_button(
+                            label="📥 Download Gráfico",
+                            data=st.session_state.graph_buffer,
+                            file_name=st.session_state.graph_filename,
+                            mime="image/png"
+                        )
 
-                    with st.expander("Rastreio da Execução (Verbose)"):
-                        st.code(output_buffer.getvalue(), language='log')
+                    st.markdown(assistant_message_content)
 
                 except Exception as e:
                     sys.stdout = sys.__stdout__
