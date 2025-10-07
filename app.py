@@ -27,7 +27,7 @@ from langchain.schema import HumanMessage, AIMessage
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 except KeyError:
-    st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
+    st.error("ERRO: A _API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
     st.stop()
 
 # --- 2. ESTADO E FUNÇÕES AUXILIARES ---
@@ -256,7 +256,7 @@ Histórico da conversa:
 # --- 5. INTERFACE STREAMLIT ---
 
 st.set_page_config(layout="wide")
-st.title("🤖 Agente de Análise de Dados com Gemini")
+st.title("🤖 Agente de Análise de Dados Autonometa")
 
 st.sidebar.markdown(
     """
@@ -393,3 +393,4 @@ if st.session_state.agent:
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
