@@ -14,6 +14,7 @@ import base64
 import logging
 from ydata_profiling import ProfileReport
 
+# --- LangChain / Gemini ---
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langchain.tools import tool
@@ -22,11 +23,14 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 from langchain.agents import AgentExecutor
 from langchain.schema import HumanMessage, AIMessage
 
+# --- 1. CONFIGURAÇÃO INICIAL E CHAVE API ---
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 except KeyError:
     st.error("ERRO: A GEMINI_API_KEY não foi encontrada. Defina-a no Streamlit Secrets (st.secrets) com o nome 'GEMINI_API_KEY'.")
     st.stop()
+
+# --- 2. ESTADO E FUNÇÕES AUXILIARES ---
 
 if 'df' not in st.session_state:
     st.session_state.df = None
@@ -57,6 +61,8 @@ def parse_comando_grafico(comando: str) -> tuple:
         return 'hist', parts[0], None
     return None, None, None
 
+# --- 3. FERRAMENTAS DO AGENTE ---
+
 @st.cache_data
 def load_csv(uploaded_file):
     content_bytes = uploaded_file.getvalue()
@@ -78,6 +84,7 @@ def generate_profile(df_sample):
 
 @tool
 def otimizar_tipos_de_dados_para_memoria() -> str:
+    """Otimiza os tipos de dados numéricos do DataFrame para reduzir uso de memória."""
     df = st.session_state.df
     if df is None:
         return "Erro: DataFrame não carregado."
@@ -100,6 +107,7 @@ def otimizar_tipos_de_dados_para_memoria() -> str:
 
 @tool
 def gerar_perfil_de_dados_e_salvar_html() -> str:
+    """Gera um relatório HTML de perfil de dados (ydata-profiling)."""
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_profile = get_data_for_high_cost_tool(df, threshold=50000)
@@ -115,6 +123,12 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
 
 @tool
 def gerar_visualizacao(comando_grafico: str) -> str:
+    """
+    Gera um gráfico PNG a partir de um comando simples.
+    O formato do comando deve ser: 'tipo_de_grafico(coluna_x, coluna_y)' ou 'coluna_x, tipo_de_grafico'.
+    Tipos suportados: hist, scatter, line, box, bar.
+    Exemplos: 'hist(Amount)', 'scatter(Preço, Quantidade)', 'Categoria, bar'.
+    """
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
     data_to_plot = get_data_for_high_cost_tool(df)
@@ -180,6 +194,8 @@ def gerar_visualizacao(comando_grafico: str) -> str:
     finally:
         plt.close()
 
+# --- 4. CRIAÇÃO DO AGENTE ---
+
 def create_agent(df: pd.DataFrame):
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -237,6 +253,8 @@ Histórico da conversa:
 
     return executor
 
+# --- 5. INTERFACE STREAMLIT ---
+
 st.set_page_config(layout="wide")
 st.title("🤖 Agente de Análise de Dados com Gemini")
 
@@ -276,6 +294,8 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.error(traceback.format_exc())
             st.session_state.df = None
 
+# --- HISTÓRICO DE MENSAGENS (suporta dict e HumanMessage/AIMessage) ---
+
 for message in st.session_state.messages:
     if isinstance(message, dict):
         role = message.get("role", "assistant")
@@ -292,6 +312,8 @@ for message in st.session_state.messages:
 
     with st.chat_message(role):
         st.markdown(content)
+
+# --- BLOCO DE CHAT ---
 
 if st.session_state.df is not None:
     st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
