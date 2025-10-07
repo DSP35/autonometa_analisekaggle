@@ -63,6 +63,25 @@ def parse_comando_grafico(comando: str) -> tuple:
 
 # --- 3. FERRAMENTAS DO AGENTE ---
 
+@st.cache_data
+def load_csv(uploaded_file):
+    content_bytes = uploaded_file.getvalue()
+    try:
+        content = content_bytes.decode('utf-8-sig')
+    except:
+        content = content_bytes.decode('latin1')
+    return pd.read_csv(io.StringIO(content), sep=None, engine='python')
+
+@st.cache_data
+def generate_profile(df_sample):
+    return ProfileReport(
+        df_sample,
+        title=f"Relatório de Perfil de Dados - {st.session_state.NOME_DO_ARQUIVO_REFERENCIA}",
+        html={"style": {"full_width": True}},
+        sort=None,
+        lazy=True
+    )
+
 @tool
 def otimizar_tipos_de_dados_para_memoria() -> str:
     """Otimiza os tipos de dados numéricos do DataFrame para reduzir uso de memória."""
@@ -91,15 +110,9 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
     """Gera um relatório HTML de perfil de dados (ydata-profiling)."""
     df = st.session_state.df
     if df is None: return "Erro: O DataFrame não está carregado."
-    data_to_profile = get_data_for_high_cost_tool(df)
+    data_to_profile = get_data_for_high_cost_tool(df, threshold=50000)
     try:
-        profile = ProfileReport(
-            data_to_profile,
-            title=f"Relatório de Perfil de Dados - {st.session_state.NOME_DO_ARQUIVO_REFERENCIA}",
-            html={"style": {"full_width": True}},
-            sort=None,
-            lazy=True
-        )
+        profile = generate_profile(data_to_profile)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
             profile.to_file(tmp_file.name)
             output_file_path = tmp_file.name
@@ -193,18 +206,18 @@ def create_agent(df: pd.DataFrame):
     tools = [otimizar_tipos_de_dados_para_memoria, gerar_perfil_de_dados_e_salvar_html, gerar_visualizacao]
 
     CUSTOM_PREFIX = """
-    Você é um analista de dados especializado em Exploratory Data Analysis (EDA). Sua função é analisar o DataFrame fornecido de forma profunda e iterativa, explorando aspectos como: estatísticas descritivas (média, mediana, desvio padrão, quartis), distribuições de variáveis, correlações entre colunas, identificação de outliers, valores faltantes, padrões temporais ou categóricos, e insights acionáveis baseados nos dados.
-    
-    Responda exclusivamente a perguntas relacionadas ao dataset, fornecendo análises claras, concisas e baseadas em evidências. Sempre considere o contexto completo da conversa para tirar conclusões cumulativas, evitando repetições desnecessárias.
-    
-    Pense passo a passo antes de responder:
-    1. Entenda a query do usuário e relacione com o histórico da conversa.
-    2. Verifique se a análise pode ser feita diretamente com consultas ao DataFrame (ex.: df.describe(), df.corr()).
-    3. Use ferramentas (como otimização de tipos, geração de perfil de dados ou visualizações) SOMENTE se explicitamente solicitado pelo usuário ou se for essencial para responder com precisão (ex.: "gere um gráfico" ou quando a query exige visualização para clareza). Evite chamadas desnecessárias.
-    4. Interprete os resultados e forneça insights úteis, sugerindo próximos passos de análise se relevante.
-    
-    Histórico da conversa:
-    {conversation_history}
+Você é um analista de dados especializado em Exploratory Data Analysis (EDA). Sua função é analisar o DataFrame fornecido de forma profunda e iterativa, explorando aspectos como: estatísticas descritivas (média, mediana, desvio padrão, quartis), distribuições de variáveis, correlações entre colunas, identificação de outliers, valores faltantes, padrões temporais ou categóricos, e insights acionáveis baseados nos dados.
+
+Responda exclusivamente a perguntas relacionadas ao dataset, fornecendo análises claras, concisas e baseadas em evidências. Sempre considere o contexto completo da conversa para tirar conclusões cumulativas, evitando repetições desnecessárias.
+
+Pense passo a passo antes de responder:
+1. Entenda a query do usuário e relacione com o histórico da conversa.
+2. Verifique se a análise pode ser feita diretamente com consultas ao DataFrame (ex.: df.describe(), df.corr()).
+3. Use ferramentas (como otimização de tipos, geração de perfil de dados ou visualizações) SOMENTE se explicitamente solicitado pelo usuário ou se for essencial para responder com precisão (ex.: "gere um gráfico" ou quando a query exige visualização para clareza). Evite chamadas desnecessárias.
+4. Interprete os resultados e forneça insights úteis, sugerindo próximos passos de análise se relevante.
+
+Histórico da conversa:
+{conversation_history}
     """
     CUSTOM_SUFFIX = ""
 
@@ -217,10 +230,12 @@ def create_agent(df: pd.DataFrame):
         return_messages=True
     )
 
+    df_for_agent = df if df.shape[0] < 50000 else df.sample(n=50000, random_state=42).reset_index(drop=True)
+
     agent_framework = create_pandas_dataframe_agent(
         llm,
-        df,
-        verbose=True,
+        df_for_agent,
+        verbose=False,
         agent_type="openai-tools",
         extra_tools=tools,
         allow_dangerous_code=True,
@@ -232,7 +247,7 @@ def create_agent(df: pd.DataFrame):
         agent=agent_framework.agent,
         tools=agent_framework.tools,
         memory=memory,
-        verbose=True,
+        verbose=False,
         handle_parsing_errors=True,
     )
 
@@ -241,12 +256,12 @@ def create_agent(df: pd.DataFrame):
 # --- 5. INTERFACE STREAMLIT ---
 
 st.set_page_config(layout="wide")
-st.title("🤖 Agente de Análise de Dados Autonometa")
+st.title("🤖 Agente de Análise de Dados com Gemini")
 
 st.sidebar.markdown(
     """
     <div style="text-align: center;">
-        <img src="https://i.imgur.com/oH1wbZ4.png" width="100">
+        <img src="https://i.imgur.com/oH1wbZ4.png" width="150">
     </div>
     """,
     unsafe_allow_html=True
@@ -256,15 +271,20 @@ uploaded_file = st.sidebar.file_uploader("Carregue seu arquivo CSV", type="csv")
 
 if uploaded_file is not None and (st.session_state.df is None or st.session_state.NOME_DO_ARQUIVO_REFERENCIA != uploaded_file.name):
     st.session_state.messages = []
-    with st.spinner(f"Carregando {uploaded_file.name}..."):
-        df = load_csv(uploaded_file)
+    with st.spinner(f"Carregando {uploaded_file.name} e inicializando o agente..."):
         try:
-            content_bytes = uploaded_file.getvalue()
-            try:
-                content = content_bytes.decode('utf-8-sig')
-            except Exception:
-                content = content_bytes.decode('latin1')
-            df = pd.read_csv(io.StringIO(content), sep=None, engine='python')
+            df = load_csv(uploaded_file)
+            if df.shape[0] > 10000:
+                initial_mem = df.memory_usage(deep=True).sum()
+                for col in df.columns:
+                    col_type = df[col].dtype
+                    if np.issubdtype(col_type, np.integer):
+                        df[col] = pd.to_numeric(df[col], downcast='integer')
+                    elif np.issubdtype(col_type, np.floating):
+                        df[col] = pd.to_numeric(df[col], downcast='float')
+                final_mem = df.memory_usage(deep=True).sum()
+                mem_saved = (initial_mem - final_mem) / (1024**2)
+                st.info(f"DF otimizado automaticamente: {mem_saved:.2f} MB economizados.")
             st.session_state.df = df
             st.session_state.NOME_DO_ARQUIVO_REFERENCIA = uploaded_file.name
             st.session_state.agent = create_agent(df)
@@ -274,32 +294,6 @@ if uploaded_file is not None and (st.session_state.df is None or st.session_stat
             st.error(traceback.format_exc())
             st.session_state.df = None
 
-# --- Bloco Lateral (Sidebar) ---
-if st.session_state.df is not None:
-    st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        st.metric(label="Linhas", value=st.session_state.df.shape[0])
-    with col2:
-        st.metric(label="Colunas", value=st.session_state.df.shape[1])
-    st.sidebar.markdown("**Amostragem de dados:**")
-    st.sidebar.dataframe(st.session_state.df.head(5))
-    
-    # Botões de download do relatório de perfil (com limpeza)
-    if 'profile_report_path' in st.session_state:
-        with open(st.session_state.profile_report_path, "rb") as file:
-            st.sidebar.download_button(
-                label="📥 Baixar Relatório de Perfil (.html)",
-                data=file,
-                file_name="relatorio_perfil.html",
-                mime="text/html"
-            )
-        try:
-            os.remove(st.session_state.profile_report_path)
-        except OSError:
-            pass
-        del st.session_state.profile_report_path
-            
 # --- HISTÓRICO DE MENSAGENS (suporta dict e HumanMessage/AIMessage) ---
 
 for message in st.session_state.messages:
@@ -321,6 +315,32 @@ for message in st.session_state.messages:
 
 # --- BLOCO DE CHAT ---
 
+if st.session_state.df is not None:
+    st.sidebar.markdown(f"**Arquivo carregado:** `{st.session_state.NOME_DO_ARQUIVO_REFERENCIA}`")
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric(label="Linhas", value=st.session_state.df.shape[0])
+    with col2:
+        st.metric(label="Colunas", value=st.session_state.df.shape[1])
+    
+    st.sidebar.markdown("**Amostragem de dados:**")
+    st.sidebar.dataframe(st.session_state.df.head(5))
+    
+    if 'profile_report_path' in st.session_state:
+        with open(st.session_state.profile_report_path, "rb") as file:
+            st.sidebar.download_button(
+                label="📥 Baixar Relatório de Perfil (.html)",
+                data=file,
+                file_name="relatorio_perfil.html",
+                mime="text/html"
+            )
+        try:
+            os.remove(st.session_state.profile_report_path)
+        except OSError:
+            pass
+        del st.session_state.profile_report_path
+
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
     if pergunta:
@@ -336,17 +356,14 @@ if st.session_state.agent:
                     sys.stdout = sys.__stdout__
                     assistant_message_content = resposta['output']
 
-                    # Se gráfico foi gerado, anexe o markdown base64 à content do assistente
                     if 'graph_buffer' in st.session_state and st.session_state.graph_buffer:
-                        st.markdown("---")  # Separador opcional
-                        st.subheader("Gráfico Gerado")  # Cabeçalho opcional, agora dentro da bolha
+                        st.markdown("---")
+                        st.subheader("Gráfico Gerado")
                         img_base64 = base64.b64encode(st.session_state.graph_buffer).decode()
                         img_markdown = f'![{st.session_state.graph_filename}](data:image/png;base64,{img_base64})'
                         
-                        # Anexe à content
                         assistant_message_content += f"\n\n{img_markdown}"
                         
-                        # Atualize a última mensagem na session_state (já que memory atualizou com output original)
                         if st.session_state.messages and isinstance(st.session_state.messages[-1], AIMessage):
                             st.session_state.messages[-1].content = assistant_message_content
                         
@@ -362,34 +379,13 @@ if st.session_state.agent:
                     sys.stdout = sys.__stdout__
                     error_msg = f"❌ Erro na execução do Agente: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
                     
-                    # Persista o erro na session_state para exibição em reruns
                     if 'last_error' not in st.session_state:
                         st.session_state.last_error = []
                     st.session_state.last_error.append(error_msg)
                     
-                    # Exiba o erro de forma persistente
                     st.error(error_msg)
-                    st.exception(e)  # Mostra o traceback completo
+                    st.exception(e)
                     
-                    # Logging opcional para console/debug (útil em deploy)
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
