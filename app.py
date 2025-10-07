@@ -116,7 +116,7 @@ def gerar_perfil_de_dados_e_salvar_html() -> str:
     data_to_profile = get_data_for_high_cost_tool(df, threshold=50000)
     try:
         profile = generate_profile(data_to_profile)
-        with tempfile.NamedTemporaryFile(ete=False, suffix=".html") as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
             profile.to_file(tmp_file.name)
             output_file_path = tmp_file.name
         st.session_state.profile_report_path = output_file_path
@@ -201,7 +201,7 @@ def gerar_visualizacao(comando_grafico: str) -> str:
 
 def create_agent(df: pd.DataFrame):
     llm = ChatGoogleGenerativeAI(
-        mo="gemini-2.5-flash",
+        model="gemini-2.5-flash",
         temperature=0,
         max_tokens=2048,
         api_key=GEMINI_API_KEY
@@ -342,7 +342,7 @@ if st.session_state.df is not None:
             os.remove(st.session_state.profile_report_path)
         except OSError:
             pass
-         st.session_state.profile_report_path
+        del st.session_state.profile_report_path
 
 if st.session_state.agent:
     pergunta = st.chat_input("Digite sua pergunta de análise de dados aqui...")
@@ -369,7 +369,7 @@ if st.session_state.agent:
                         
                         if st.session_state.messages and isinstance(st.session_state.messages[-1], AIMessage):
                             st.session_state.messages[-1].content = assistant_message_content
-
+                        
                         st.download_button(
                             label="📥 Download Gráfico",
                             data=st.session_state.graph_buffer,
@@ -393,7 +393,4 @@ if st.session_state.agent:
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
-
-
-
 
