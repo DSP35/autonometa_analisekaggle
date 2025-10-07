@@ -1,3 +1,6 @@
+# --- Agente de análise de dados com Gemini ---
+# --- Autor: David Parede - Autonometa ---
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -393,4 +396,5 @@ if st.session_state.agent:
                     logging.error(error_msg)
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
