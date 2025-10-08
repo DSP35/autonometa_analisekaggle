@@ -395,7 +395,10 @@ if st.session_state.agent:
                     st.exception(e)
                     
                     logging.error(error_msg)
+            if 'profile_report_path' in st.session_state:
+                st.rerun()
 else:
     st.warning("Por favor, carregue um arquivo CSV na barra lateral para começar a análise.")
+
 
 
